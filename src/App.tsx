@@ -6,6 +6,8 @@ import { Sidebar } from './components/Sidebar'
 import { Modal, PromptDialog, type PromptRequest } from './components/Dialog'
 import { SyncDialog } from './components/SyncDialog'
 import { FontDialog } from './components/FontDialog'
+import { TemplateDialog } from './components/TemplateDialog'
+import { TEMPLATE_FOLDER } from './templates'
 import { InkLayer, InkToolbar, PEN_COLORS, PEN_SIZES, type InkHandle, type InkToolState } from './components/InkLayer'
 import { type InkData, emptyInk, joinInk, splitInk } from './lib/ink'
 import { BODY_FONTS, CODE_FONTS, FONT_FALLBACK, resolveFont } from './lib/fonts'
@@ -105,6 +107,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const [syncCfg, setSyncCfg] = useState<SyncConfig>(loadSyncConfig)
   const [syncOpen, setSyncOpen] = useState(false)
   const [fontOpen, setFontOpen] = useState(false)
+  const [templateOpen, setTemplateOpen] = useState(false)
   const [inkMode, setInkMode] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [printStrokes, setPrintStrokes] = useState(true)
@@ -380,6 +383,34 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     },
     [switchTo, updateDocs],
   )
+
+  // ---------- 템플릿 ----------
+  const isTemplateFolder = (f?: string) => !!f && (f === TEMPLATE_FOLDER || f.startsWith(`${TEMPLATE_FOLDER}/`))
+
+  /** 템플릿으로 새 문서: 지금 보고 있는 문서와 같은 폴더에 만든다 (템플릿 폴더 제외) */
+  const newFromTemplate = useCallback(
+    (content: string) => {
+      setTemplateOpen(false)
+      const folder = active.folder && !isTemplateFolder(active.folder) ? active.folder : undefined
+      createDoc(content, folder ? { folder } : {})
+      setMode('wysiwyg')
+    },
+    [active.folder, createDoc],
+  )
+
+  const saveAsTemplate = useCallback(() => {
+    setTemplateOpen(false)
+    if (!active.content.trim()) return setToast('빈 문서는 템플릿으로 저장할 수 없습니다')
+    createDoc(active.content, { folder: TEMPLATE_FOLDER })
+    setSettings((s) => ({
+      ...s,
+      sidebarOpen: true,
+      sidebarTab: 'files',
+      folders: s.folders.includes(TEMPLATE_FOLDER) ? s.folders : [...s.folders, TEMPLATE_FOLDER],
+      collapsedFolders: s.collapsedFolders.filter((f) => f !== TEMPLATE_FOLDER),
+    }))
+    setToast(`"${TEMPLATE_FOLDER}" 폴더에 템플릿으로 저장했습니다`)
+  }, [active.content, createDoc])
 
   // ---------- 폴더 ----------
   const folderName = (raw: string | null) => cleanFolder((raw ?? '').replace(/\//g, ' '))
@@ -672,7 +703,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   // ---------- 단축키 ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (promptReq || syncOpen || fontOpen || pdfAsk) return
+      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen) return
       const mod = isMac ? e.metaKey : e.ctrlKey
       const k = e.code
       const inText = (e.target as HTMLElement | null)?.tagName === 'TEXTAREA'
@@ -689,7 +720,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       else if (k === 'KeyS') doSave(e.shiftKey)
       else if (k === 'KeyP' && !e.shiftKey) exportPdf()
       else if (k === 'KeyO') doOpen()
-      else if (k === 'KeyN' && (e.altKey || !e.shiftKey)) createDoc('', active.folder ? { folder: active.folder } : {})
+      else if (k === 'KeyN' && (e.altKey || !e.shiftKey)) createDoc('', active.folder && !isTemplateFolder(active.folder) ? { folder: active.folder } : {})
       else if (k === 'Slash') toggleMode()
       else if (e.shiftKey && k === 'KeyL') set('sidebarOpen', !settings.sidebarOpen)
       else if (e.shiftKey && k === 'Digit1') setSettings((s) => ({ ...s, sidebarOpen: true, sidebarTab: 'outline' }))
@@ -716,7 +747,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [active.folder, createDoc, doOpen, doSave, exportPdf, fmt, fontOpen, pdfAsk, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
+  }, [active.folder, createDoc, doOpen, doSave, exportPdf, fmt, fontOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
 
   // ---------- .md 파일 끌어다 놓기 ----------
   useEffect(() => {
@@ -755,6 +786,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       label: '파일',
       items: [
         { label: '새 문서', shortcut: sc('Mod+N'), action: () => createDoc() },
+        { label: '템플릿으로 새 문서…', action: () => setTemplateOpen(true) },
+        { label: '지금 문서를 템플릿으로 저장', action: saveAsTemplate },
         { label: '열기…', shortcut: sc('Mod+O'), action: doOpen },
         ...(supportsFolder ? [{ label: '폴더 열기…', action: doOpenFolder }] : []),
         { divider: true },
@@ -871,6 +904,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
             onDeleteFolder={deleteFolder}
             onMoveDoc={moveDoc}
             onCollapseSidebar={() => set('sidebarOpen', false)}
+            onTemplate={() => setTemplateOpen(true)}
             headings={headings}
             onHeading={goHeading}
             folder={folder}
@@ -941,6 +975,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       </footer>
       {toast && <div className="toast">{toast}</div>}
       {promptReq && <PromptDialog req={promptReq} onDone={() => setPromptReq(null)} />}
+      {templateOpen && <TemplateDialog docs={docs} onPick={newFromTemplate} onSaveCurrent={saveAsTemplate} onClose={() => setTemplateOpen(false)} />}
       {pdfAsk && (
         <Modal title="PDF로 내보내기" onClose={() => setPdfAsk(false)} width={400}>
           <p className="hint" style={{ marginTop: 0 }}>글상자는 항상 포함됩니다. 손글씨를 넣을지 골라 주세요.</p>

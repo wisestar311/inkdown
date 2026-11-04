@@ -27,6 +27,7 @@ interface Props {
   onDeleteFolder: (path: string) => void
   onMoveDoc: (id: string, folder: string) => void
   onCollapseSidebar: () => void
+  onTemplate: () => void
 }
 
 // ---------- 동기화 표시 ----------
@@ -272,6 +273,7 @@ export function Sidebar(p: Props) {
         <div className="sidebar-body files">
           <div className="files-actions">
             <button className="files-btn" onClick={() => p.onNew()}>＋ 새 문서</button>
+            <button className="files-btn" onClick={p.onTemplate} title="유튜브 대본 등 템플릿으로 새 문서">📋 템플릿</button>
             <button className="files-btn" onClick={() => p.onNewFolder()}>📁 새 폴더</button>
           </div>
 

@@ -412,3 +412,15 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .popover-item.danger { color: #f85149; }
 .popover-item.danger:hover { background: #f85149; color: #fff; }
 .popover-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+
+/* ============ 템플릿 ============ */
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tpl-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; text-align: left;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg); min-height: 112px;
+}
+.tpl-card:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--selected); }
+.tpl-icon { font-size: 22px; }
+.tpl-name { font-weight: 700; color: var(--heading); }
+.tpl-desc { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.files-actions .files-btn { padding: 6px 2px; }

@@ -7,6 +7,8 @@ import { Modal, PromptDialog, type PromptRequest } from './components/Dialog'
 import { SyncDialog } from './components/SyncDialog'
 import { FontDialog } from './components/FontDialog'
 import { TemplateDialog } from './components/TemplateDialog'
+import { LockDialog } from './components/LockDialog'
+import { getLockConfig, isLockEnabled } from './lib/vault'
 import { TEMPLATE_FOLDER } from './templates'
 import { InkLayer, InkToolbar, PEN_COLORS, PEN_SIZES, type InkHandle, type InkToolState } from './components/InkLayer'
 import { type InkData, emptyInk, joinInk, splitInk } from './lib/ink'
@@ -108,6 +110,9 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const [syncOpen, setSyncOpen] = useState(false)
   const [fontOpen, setFontOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
+  const [lockOpen, setLockOpen] = useState(false)
+  const [lockOn, setLockOn] = useState(isLockEnabled)
+  const skipUnloadWarn = useRef(false)
   const [inkMode, setInkMode] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [printStrokes, setPrintStrokes] = useState(true)
@@ -316,6 +321,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   // 웹: 창을 닫기 전 저장 / 데스크톱: 저장과 동기화를 마친 뒤 닫힘
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
+      if (skipUnloadWarn.current) return
       saveDocs(docsRef.current)
       if (docsRef.current.some((d) => d.dirty)) e.preventDefault()
     }
@@ -383,6 +389,42 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     },
     [switchTo, updateDocs],
   )
+
+  // ---------- 잠금 ----------
+  /** 지금 잠그기: 저장을 마치고 화면을 다시 불러와 메모리의 문서를 비운 뒤 PIN 화면을 띄움 */
+  const lockNow = useCallback(async () => {
+    if (!isLockEnabled()) return setLockOpen(true)
+    await saveDocs(docsRef.current)
+    skipUnloadWarn.current = true
+    location.reload()
+  }, [])
+
+  /** 잠금을 켜고 끄거나 PIN을 바꾼 뒤: 기기 안 데이터를 새 방식(암호화/평문)으로 다시 저장 */
+  const resaveSecure = useCallback(async () => {
+    await saveDocs(docsRef.current)
+    await saveTombstones(tombstones.current)
+    saveSyncConfig(syncCfgRef.current)
+    setLockOn(isLockEnabled())
+  }, [])
+
+  // 자동 잠금: 정해진 시간 동안 조작이 없으면 잠금
+  useEffect(() => {
+    if (!lockOn) return
+    let last = Date.now()
+    const touch = () => {
+      last = Date.now()
+    }
+    const events = ['keydown', 'pointerdown', 'wheel', 'touchstart'] as const
+    events.forEach((ev) => window.addEventListener(ev, touch, { passive: true }))
+    const timer = setInterval(() => {
+      const min = getLockConfig()?.autoLockMin ?? 0
+      if (min > 0 && Date.now() - last > min * 60_000) lockNow()
+    }, 15_000)
+    return () => {
+      clearInterval(timer)
+      events.forEach((ev) => window.removeEventListener(ev, touch))
+    }
+  }, [lockNow, lockOn])
 
   // ---------- 템플릿 ----------
   const isTemplateFolder = (f?: string) => !!f && (f === TEMPLATE_FOLDER || f.startsWith(`${TEMPLATE_FOLDER}/`))
@@ -703,7 +745,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   // ---------- 단축키 ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen) return
+      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen || lockOpen) return
       const mod = isMac ? e.metaKey : e.ctrlKey
       const k = e.code
       const inText = (e.target as HTMLElement | null)?.tagName === 'TEXTAREA'
@@ -711,6 +753,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       if (inkMode && !inText && e.key === 'Escape') setInkMode(false)
       else if (inkMode && !inText && mod && k === 'KeyZ' && !e.shiftKey) inkRef.current?.undo()
       else if (mod && e.shiftKey && k === 'KeyD') toggleInk()
+      else if (mod && e.altKey && k === 'KeyL') lockNow()
       else if (mod && e.shiftKey && k === 'KeyH' && mode === 'wysiwyg') fmt({ type: 'highlight', color: 'yellow' })
       else if (mod && !e.shiftKey && k === 'KeyU' && mode === 'wysiwyg') fmt({ type: 'underline' })
       else if (e.key === 'F8') set('focusMode', !settings.focusMode)
@@ -747,7 +790,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [active.folder, createDoc, doOpen, doSave, exportPdf, fmt, fontOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
+  }, [active.folder, createDoc, doOpen, doSave, exportPdf, fmt, fontOpen, lockNow, lockOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
 
   // ---------- .md 파일 끌어다 놓기 ----------
   useEffect(() => {
@@ -795,6 +838,9 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         { label: '다른 이름으로 저장…', shortcut: sc('Mod+Shift+S'), action: () => doSave(true) },
         { divider: true },
         ...syncItems,
+        { divider: true },
+        ...(lockOn ? [{ label: '지금 잠그기', shortcut: sc('Mod+Alt+L'), action: lockNow }] : []),
+        { label: lockOn ? '잠금(PIN) 설정…' : '잠금(PIN) 켜기…', action: () => setLockOpen(true) },
         { divider: true },
         { label: 'HTML로 내보내기', action: exportHtml },
         { label: 'PDF로 내보내기…', shortcut: sc('Mod+P'), action: exportPdf },
@@ -959,6 +1005,11 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
           {settings.typewriterMode && <span className="badge">타자기</span>}
         </div>
         <div className="right">
+          {lockOn && (
+            <button className="status-btn" title={`지금 잠그기 (${sc('Mod+Alt+L')})`} onClick={lockNow}>
+              🔒
+            </button>
+          )}
           <button
             className={`status-btn sync sync-${sync.phase}`}
             title={sync.message || (syncCfg.enabled ? `${syncCfg.owner}/${syncCfg.repo} — 클릭하면 지금 동기화` : '클릭해서 기기 간 동기화 설정')}
@@ -975,6 +1026,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       </footer>
       {toast && <div className="toast">{toast}</div>}
       {promptReq && <PromptDialog req={promptReq} onDone={() => setPromptReq(null)} />}
+      {lockOpen && <LockDialog onResave={resaveSecure} onClose={() => setLockOpen(false)} onToast={setToast} />}
       {templateOpen && <TemplateDialog docs={docs} onPick={newFromTemplate} onSaveCurrent={saveAsTemplate} onClose={() => setTemplateOpen(false)} />}
       {pdfAsk && (
         <Modal title="PDF로 내보내기" onClose={() => setPdfAsk(false)} width={400}>

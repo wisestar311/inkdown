@@ -1,4 +1,5 @@
 import { idbGet, idbSet } from './db'
+import { isLockEnabled, seal, unseal, type Sealed } from './vault'
 
 export interface Doc {
   id: string
@@ -110,24 +111,31 @@ function write(key: string, value: unknown) {
 /** 문서 목록 불러오기. 이전 버전(localStorage)에 저장된 문서는 IndexedDB로 옮김 */
 export async function loadDocs(): Promise<Doc[]> {
   try {
-    const docs = await idbGet<Doc[]>(DOCS_KEY)
-    if (docs) return docs
+    const stored = await idbGet<Doc[] | Sealed>(DOCS_KEY)
+    if (stored) return (await unseal<Doc[]>(stored)) ?? []
     const legacy = read<Doc[]>(LEGACY_DOCS_KEY, [])
     if (legacy.length) {
       await idbSet(DOCS_KEY, legacy)
       localStorage.removeItem(LEGACY_DOCS_KEY)
     }
     return legacy
-  } catch {
+  } catch (e) {
+    if (isLockEnabled()) throw e // 잠금 데이터는 열지 못하면 빈 목록으로 덮어쓰지 않도록 중단
     return read<Doc[]>(LEGACY_DOCS_KEY, [])
   }
 }
 
-export const saveDocs = (docs: Doc[]) =>
-  idbSet(DOCS_KEY, docs).catch((err) => console.warn('문서를 저장하지 못했습니다', err))
+/** 잠금이 켜져 있으면 PIN 키로 암호화해서 저장 */
+export const saveDocs = async (docs: Doc[]) => {
+  try {
+    await idbSet(DOCS_KEY, await seal(docs))
+  } catch (err) {
+    console.warn('문서를 저장하지 못했습니다', err)
+  }
+}
 
-export const loadTombstones = async () => (await idbGet<Tombstone[]>(TOMB_KEY).catch(() => undefined)) ?? []
-export const saveTombstones = (t: Tombstone[]) => idbSet(TOMB_KEY, t).catch(() => undefined)
+export const loadTombstones = async () => (await unseal<Tombstone[]>(await idbGet<Tombstone[] | Sealed>(TOMB_KEY).catch(() => undefined)).catch(() => undefined)) ?? []
+export const saveTombstones = async (t: Tombstone[]) => idbSet(TOMB_KEY, await seal(t)).catch(() => undefined)
 
 export const loadActiveId = () => read<string | null>(ACTIVE_KEY, null)
 export const saveActiveId = (id: string) => write(ACTIVE_KEY, id)
@@ -155,8 +163,28 @@ export const loadSyncConfig = (): SyncConfig => ({
   token: '',
   device: defaultDevice(),
   ...read<Partial<SyncConfig>>(SYNC_KEY, {}),
+  ...(isLockEnabled() ? { token: tokenCache } : {}),
 })
-export const saveSyncConfig = (c: SyncConfig) => write(SYNC_KEY, c)
+/* 잠금이 켜져 있으면 토큰은 localStorage가 아니라 암호화해서 IndexedDB에 보관 */
+const TOKEN_KEY = 'syncToken'
+let tokenCache = ''
+
+/** 앱 시작(잠금 해제) 후 한 번 호출: 암호화된 토큰을 메모리로 불러옴 */
+export async function loadSecrets() {
+  if (!isLockEnabled()) return
+  tokenCache = (await unseal<string>(await idbGet<string | Sealed>(TOKEN_KEY).catch(() => undefined)).catch(() => '')) ?? ''
+}
+
+export function saveSyncConfig(c: SyncConfig) {
+  if (isLockEnabled()) {
+    tokenCache = c.token
+    write(SYNC_KEY, { ...c, token: '' })
+    seal(c.token).then((v) => idbSet(TOKEN_KEY, v)).catch(() => undefined)
+  } else {
+    write(SYNC_KEY, c)
+    idbSet(TOKEN_KEY, '').catch(() => undefined)
+  }
+}
 export const loadLastSync = () => read<number | null>(LAST_SYNC_KEY, null)
 export const saveLastSync = (t: number) => write(LAST_SYNC_KEY, t)
 

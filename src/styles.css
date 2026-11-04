@@ -424,3 +424,31 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .tpl-name { font-weight: 700; color: var(--heading); }
 .tpl-desc { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .files-actions .files-btn { padding: 6px 2px; }
+
+/* ============ 잠금 ============ */
+.lock-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--sidebar-bg); }
+.lock-card { width: 320px; max-width: 100%; text-align: center; }
+.lock-logo { font-size: 40px; }
+.lock-card h2 { margin: 8px 0 4px; color: var(--heading); font-size: 20px; }
+.lock-sub { margin: 0 0 18px; color: var(--muted); font-size: 14px; min-height: 20px; }
+.pin-dots { display: flex; justify-content: center; gap: 12px; margin-bottom: 14px; }
+.pin-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); }
+.pin-dots span.on { background: var(--accent); border-color: var(--accent); }
+.pin-dots.shake { animation: shake 0.35s; }
+@keyframes shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+.lock-error { color: #f85149; font-size: 13px; margin: 0 0 10px; }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 6px; }
+.pin-pad button {
+  height: 60px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg); color: var(--heading);
+  font-size: 24px; font-weight: 600;
+}
+.pin-pad button:hover:not(:disabled) { background: var(--hover); }
+.pin-pad button:disabled { opacity: 0.45; cursor: default; }
+.pin-pad .pin-sub { font-size: 20px; color: var(--muted); }
+.pin-pad .pin-ok { font-size: 17px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.lock-forgot { margin-top: 18px; color: var(--muted); font-size: 13px; text-decoration: underline; }
+.pin-field { letter-spacing: 0.4em; font-size: 18px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; }
+.seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger-bg { background: #e5484d; border-color: #e5484d; }

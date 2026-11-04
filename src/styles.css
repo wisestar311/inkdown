@@ -461,3 +461,11 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .obs-section .hint { margin: 6px 0 10px; }
 .obs-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .obs-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }
+
+/* ============ 동기화 상태 패널 ============ */
+.sync-panel { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); font-size: 12.5px; line-height: 1.7; }
+.sync-panel.error { border-color: #f85149; background: rgba(248, 81, 73, 0.08); }
+.sync-panel.idle { border-color: #3fb950; }
+.sync-panel-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 13.5px; }
+.sync-panel-err { color: #f85149; font-weight: 600; margin-bottom: 4px; }
+.sync-panel code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; }

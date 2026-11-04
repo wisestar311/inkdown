@@ -53,7 +53,7 @@ import { cleanFolder, isSyncable, runSync, type SyncStore } from './lib/sync/eng
 import { WELCOME } from './welcome'
 
 type Mode = 'wysiwyg' | 'source'
-type SyncState = { phase: 'off' | 'idle' | 'syncing' | 'error' | 'offline'; message?: string; last: number | null }
+type SyncState = { phase: 'off' | 'idle' | 'syncing' | 'error' | 'offline'; message?: string; last: number | null; remoteTotal?: number }
 
 const THEMES: { id: ThemeId; label: string; dark: boolean }[] = [
   { id: 'light', label: '라이트', dark: false },
@@ -273,7 +273,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
           const report = await runSync(cfg, store)
           const now = Date.now()
           saveLastSync(now)
-          setSync({ phase: 'idle', last: now })
+          setSync({ phase: 'idle', last: now, remoteTotal: report.remoteTotal })
           if (report.conflicts.length) setToast(`두 기기에서 동시에 수정된 문서 ${report.conflicts.length}개 — "충돌 사본"으로 함께 보관했습니다`)
           else if (manual) setToast(report.uploaded || report.downloaded || report.deleted ? `동기화 완료 (올림 ${report.uploaded} · 받음 ${report.downloaded} · 삭제 ${report.deleted})` : '이미 최신 상태입니다')
           else if (report.downloaded) setToast(`다른 기기의 변경 ${report.downloaded}건을 받았습니다`)
@@ -1081,7 +1081,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
           <button
             className={`status-btn sync sync-${sync.phase}`}
             title={sync.message || (syncCfg.enabled ? `${syncCfg.owner}/${syncCfg.repo} — 클릭하면 지금 동기화` : '클릭해서 기기 간 동기화 설정')}
-            onClick={() => (syncCfg.enabled && sync.phase !== 'error' ? runSyncNow(true) : setSyncOpen(true))}
+            onClick={() => setSyncOpen(true)}
           >
             <span className="dot" /> {syncLabel}
           </button>
@@ -1131,7 +1131,19 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
           onClose={() => setFontOpen(false)}
         />
       )}
-      {syncOpen && <SyncDialog config={syncCfg} onSave={saveSync} onClose={() => setSyncOpen(false)} />}
+      {syncOpen && (
+        <SyncDialog
+          config={syncCfg}
+          onSave={saveSync}
+          onClose={() => setSyncOpen(false)}
+          syncStatus={{
+            ...sync,
+            localTotal: docs.filter(isSyncable).filter((d) => d.content.trim()).length,
+            pending: docs.filter((d) => isSyncable(d) && d.content.trim() && (!d.remotePath || d.moved || hashText(d.content) !== d.syncedHash)).length,
+          }}
+          onSyncNow={() => runSyncNow(true)}
+        />
+      )}
     </div>
   )
 }

@@ -3,13 +3,49 @@ import { Modal } from './Dialog'
 import type { SyncConfig } from '../lib/storage'
 import { GitHubClient } from '../lib/sync/github'
 
+export interface SyncStatusInfo {
+  phase: 'off' | 'idle' | 'syncing' | 'error' | 'offline'
+  message?: string
+  last: number | null
+  remoteTotal?: number
+  localTotal: number
+  pending: number
+}
+
 interface Props {
   config: SyncConfig
   onSave: (c: SyncConfig) => void
   onClose: () => void
+  syncStatus: SyncStatusInfo
+  onSyncNow: () => void
 }
 
-export function SyncDialog({ config, onSave, onClose }: Props) {
+const when = (t: number | null) => (t ? new Date(t).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '아직 없음')
+
+/** 지금 이 기기의 동기화 상태 (문제 원인을 바로 볼 수 있게) */
+function StatusPanel({ config, status, onSyncNow }: { config: SyncConfig; status: SyncStatusInfo; onSyncNow: () => void }) {
+  if (!config.enabled) return <div className="sync-panel off">이 기기는 아직 동기화에 연결되지 않았습니다. 아래에 입력하고 <b>연결</b>을 누르세요.</div>
+  return (
+    <div className={`sync-panel ${status.phase}`}>
+      <div className="sync-panel-row">
+        <b>{status.phase === 'error' ? '⚠️ 동기화 오류' : status.phase === 'syncing' ? '동기화 중…' : status.phase === 'offline' ? '오프라인' : '✅ 정상 연결'}</b>
+        <button className="btn" onClick={onSyncNow} disabled={status.phase === 'syncing'}>
+          지금 동기화
+        </button>
+      </div>
+      {status.phase === 'error' && status.message && <div className="sync-panel-err">{status.message}</div>}
+      <div>
+        저장소 <code>{config.owner}/{config.repo}</code> · 폴더 <code>{config.folder || '(최상위)'}</code> · 이 기기 <b>{config.device}</b>
+      </div>
+      <div>
+        마지막 성공: {when(status.last)} · 저장소의 문서 {status.remoteTotal ?? '?'}개 · 이 기기의 동기화 문서 {status.localTotal}개
+        {status.pending ? ` · 올릴 문서 ${status.pending}개 대기` : ''}
+      </div>
+    </div>
+  )
+}
+
+export function SyncDialog({ config, onSave, onClose, syncStatus, onSyncNow }: Props) {
   const [repo, setRepo] = useState(config.owner && config.repo ? `${config.owner}/${config.repo}` : '')
   const [token, setToken] = useState(config.token)
   const [branch, setBranch] = useState(config.branch || 'main')
@@ -54,6 +90,7 @@ export function SyncDialog({ config, onSave, onClose }: Props) {
 
   return (
     <Modal title="기기 간 동기화 (GitHub)" onClose={onClose} width={520}>
+      <StatusPanel config={config} status={syncStatus} onSyncNow={onSyncNow} />
       <ol className="sync-guide">
         <li>
           <a href="https://github.com/new" target="_blank" rel="noreferrer">github.com/new</a> 에서 <b>Private</b> 저장소를 만듭니다. (예: <code>inkdown-notes</code>)

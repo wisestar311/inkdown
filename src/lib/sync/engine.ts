@@ -25,6 +25,8 @@ export interface SyncReport {
   downloaded: number
   deleted: number
   conflicts: string[]
+  /** 동기화가 끝난 뒤 저장소에 있는 문서 수 */
+  remoteTotal: number
 }
 
 export const isSyncable = (d: Doc) => !d.localOnly && !d.fileName && !d.localPath
@@ -76,7 +78,7 @@ function stamp() {
 
 export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncReport> {
   const gh = new GitHubClient(cfg)
-  const report: SyncReport = { uploaded: 0, downloaded: 0, deleted: 0, conflicts: [] }
+  const report: SyncReport = { uploaded: 0, downloaded: 0, deleted: 0, conflicts: [], remoteTotal: 0 }
   const msg = (verb: string, path: string) => `${verb}: ${baseName(path)} (${cfg.device})`
 
   const remote = await gh.listFiles()
@@ -208,5 +210,6 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
     report.downloaded++
   }
 
+  report.remoteTotal = new Set([...remote.keys(), ...claimed]).size
   return report
 }

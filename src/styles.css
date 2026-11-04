@@ -452,3 +452,12 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .seg button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; }
 .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.danger-bg { background: #e5484d; border-color: #e5484d; }
+
+/* ============ 다른 형식으로 저장 / Obsidian ============ */
+.export-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); }
+.fmt-ext { font-weight: 500; color: var(--muted); font-size: 12px; }
+.obs-section { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.obs-title { font-weight: 700; color: var(--heading); }
+.obs-section .hint { margin: 6px 0 10px; }
+.obs-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.obs-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }

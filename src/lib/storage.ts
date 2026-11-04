@@ -54,6 +54,12 @@ export interface Settings {
   collapsedFolders: string[]
   /** PDF에 손글씨(펜·형광펜·직선) 포함 — 글상자는 항상 포함 */
   pdfStrokes: boolean
+  /** Obsidian 보관함(vault) 이름 — 비우면 Obsidian에서 마지막으로 연 보관함 */
+  obsidianVault: string
+  /** 보관함 안에서 Inkdown 문서를 넣을 폴더 */
+  obsidianSub: string
+  /** 데스크톱: 모든 문서를 내보낼 보관함 폴더 경로 / 웹: 고른 폴더 이름(표시용) */
+  obsidianDir: string
 }
 
 export interface SyncConfig {
@@ -89,6 +95,9 @@ export const defaultSettings: Settings = {
   folders: [],
   collapsedFolders: [],
   pdfStrokes: true,
+  obsidianVault: '',
+  obsidianSub: 'Inkdown',
+  obsidianDir: '',
 }
 
 function read<T>(key: string, fallback: T): T {

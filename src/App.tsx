@@ -8,6 +8,9 @@ import { SyncDialog } from './components/SyncDialog'
 import { FontDialog } from './components/FontDialog'
 import { TemplateDialog } from './components/TemplateDialog'
 import { LockDialog } from './components/LockDialog'
+import { ExportDialog, ObsidianDialog, type ExportFormat } from './components/ExportDialogs'
+import { docsToFiles, makeZip, toDocx, toObsidian, toPlainText } from './lib/convert'
+import { exportAllToVault, openInObsidian } from './lib/obsidian'
 import { getLockConfig, isLockEnabled } from './lib/vault'
 import { TEMPLATE_FOLDER } from './templates'
 import { InkLayer, InkToolbar, PEN_COLORS, PEN_SIZES, type InkHandle, type InkToolState } from './components/InkLayer'
@@ -111,6 +114,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const [fontOpen, setFontOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [lockOpen, setLockOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [obsidianOpen, setObsidianOpen] = useState(false)
   const [lockOn, setLockOn] = useState(isLockEnabled)
   const skipUnloadWarn = useRef(false)
   const [inkMode, setInkMode] = useState(false)
@@ -323,7 +328,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     const warn = (e: BeforeUnloadEvent) => {
       if (skipUnloadWarn.current) return
       saveDocs(docsRef.current)
-      if (docsRef.current.some((d) => d.dirty)) e.preventDefault()
+      // 데스크톱 앱은 닫기 전에 따로 저장하므로 종료를 막지 않음 (막으면 백그라운드에 남는 원인이 됨)
+      if (!isDesktop && docsRef.current.some((d) => d.dirty)) e.preventDefault()
     }
     window.addEventListener('beforeunload', warn)
     const off = desktop?.onBeforeClose(async () => {
@@ -674,11 +680,71 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     else runPdf(true)
   }, [activeInk, runPdf])
 
-  const exportMd = useCallback(() => {
-    const name = safeFileName(active.title)
-    if (desktop) desktop.exportFile(name, activeBody, 'md')
-    else download(name, activeBody, 'text/markdown;charset=utf-8')
-  }, [active, activeBody])
+
+  // ---------- 다른 형식으로 저장 ----------
+  const saveFile = useCallback(async (name: string, data: string | Uint8Array, ext: string, mime: string) => {
+    if (desktop) {
+      if (await desktop.exportFile(name, data, ext)) setToast(`"${name}" 저장했습니다`)
+    } else {
+      download(name, typeof data === 'string' ? new Blob([data], { type: mime }) : new Blob([data as BlobPart], { type: mime }))
+      setToast(`"${name}" 내려받았습니다`)
+    }
+  }, [])
+
+  const exportAs = useCallback(
+    async (f: ExportFormat) => {
+      setExportOpen(false)
+      const stem = safeFileName(active.title).replace(/\.md$/, '')
+      try {
+        switch (f) {
+          case 'md':
+            return doSave(true)
+          case 'obsidian':
+            return setObsidianOpen(true)
+          case 'obsidian-md':
+            return saveFile(`${stem}.md`, toObsidian(active.content), 'md', 'text/markdown;charset=utf-8')
+          case 'docx':
+            setToast('Word 문서를 만드는 중…')
+            return saveFile(`${stem}.docx`, await toDocx(active.title, active.content), 'docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+          case 'pdf':
+            return exportPdf()
+          case 'html':
+            return exportHtml()
+          case 'txt':
+            return saveFile(`${stem}.txt`, toPlainText(active.content), 'txt', 'text/plain;charset=utf-8')
+          case 'zip': {
+            const day = new Date().toISOString().slice(0, 10)
+            // 백업은 필기 데이터까지 그대로 (나중에 다시 불러올 수 있게)
+            return saveFile(`Inkdown-백업-${day}.zip`, makeZip(docsToFiles(docsRef.current, (d) => d.content)), 'zip', 'application/zip')
+          }
+        }
+      } catch (e) {
+        setToast(`저장 실패: ${(e as Error).message}`)
+      }
+    },
+    [active.content, active.title, doSave, exportHtml, exportPdf, saveFile],
+  )
+
+  const isTemplateDoc = (d: Doc) => !!d.folder && (d.folder === TEMPLATE_FOLDER || d.folder.startsWith(`${TEMPLATE_FOLDER}/`))
+
+  const obsidianOpenCurrent = useCallback(async () => {
+    try {
+      const r = await openInObsidian(active, settings.obsidianVault, settings.obsidianSub)
+      setToast(r.viaClipboard ? 'Obsidian을 여는 중… (문서가 길어 클립보드를 거쳐 보냈습니다)' : 'Obsidian을 여는 중…')
+    } catch (e) {
+      setToast(`Obsidian으로 보내지 못했습니다: ${(e as Error).message}`)
+    }
+  }, [active, settings.obsidianSub, settings.obsidianVault])
+
+  const obsidianExportAll = useCallback(async () => {
+    try {
+      const r = await exportAllToVault(docsRef.current.filter((d) => !isTemplateDoc(d)), settings.obsidianSub, settings.obsidianDir || undefined)
+      if (r.folder && r.folder !== settings.obsidianDir) setSettings((s) => ({ ...s, obsidianDir: r.folder! }))
+      if (r.count) setToast(r.zip ? `${r.count}개 문서를 ZIP으로 내려받았습니다. 보관함 폴더에 압축을 풀어 주세요` : `${r.count}개 문서를 Obsidian 보관함에 저장했습니다`)
+    } catch (e) {
+      setToast(`내보내기 실패: ${(e as Error).message}`)
+    }
+  }, [settings.obsidianDir, settings.obsidianSub])
 
   // ---------- 서식 ----------
   const fmt = useCallback(
@@ -745,7 +811,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   // ---------- 단축키 ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen || lockOpen) return
+      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen || lockOpen || exportOpen || obsidianOpen) return
       const mod = isMac ? e.metaKey : e.ctrlKey
       const k = e.code
       const inText = (e.target as HTMLElement | null)?.tagName === 'TEXTAREA'
@@ -760,7 +826,9 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       else if (e.key === 'F9') set('typewriterMode', !settings.typewriterMode)
       else if (e.altKey && e.shiftKey && k === 'Digit5') fmt({ type: 'strike' })
       else if (!mod) handled = false
-      else if (k === 'KeyS') doSave(e.shiftKey)
+      else if (k === 'KeyS' && e.shiftKey) setExportOpen(true)
+      else if (k === 'KeyS') doSave()
+      else if (k === 'KeyQ' && desktop && !isMac) desktop.quit()
       else if (k === 'KeyP' && !e.shiftKey) exportPdf()
       else if (k === 'KeyO') doOpen()
       else if (k === 'KeyN' && (e.altKey || !e.shiftKey)) createDoc('', active.folder && !isTemplateFolder(active.folder) ? { folder: active.folder } : {})
@@ -790,7 +858,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [active.folder, createDoc, doOpen, doSave, exportPdf, fmt, fontOpen, lockNow, lockOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
+  }, [active.folder, createDoc, doOpen, doSave, exportPdf, exportOpen, fmt, fontOpen, lockNow, lockOpen, obsidianOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
 
   // ---------- .md 파일 끌어다 놓기 ----------
   useEffect(() => {
@@ -835,16 +903,16 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         ...(supportsFolder ? [{ label: '폴더 열기…', action: doOpenFolder }] : []),
         { divider: true },
         { label: syncCfg.enabled && isSyncable(active) ? '저장 (동기화)' : '저장', shortcut: sc('Mod+S'), action: () => doSave() },
-        { label: '다른 이름으로 저장…', shortcut: sc('Mod+Shift+S'), action: () => doSave(true) },
+        { label: '다른 형식으로 저장…', shortcut: sc('Mod+Shift+S'), action: () => setExportOpen(true) },
+        { label: 'Obsidian으로 보내기…', action: () => setObsidianOpen(true) },
         { divider: true },
         ...syncItems,
         { divider: true },
         ...(lockOn ? [{ label: '지금 잠그기', shortcut: sc('Mod+Alt+L'), action: lockNow }] : []),
         { label: lockOn ? '잠금(PIN) 설정…' : '잠금(PIN) 켜기…', action: () => setLockOpen(true) },
         { divider: true },
-        { label: 'HTML로 내보내기', action: exportHtml },
         { label: 'PDF로 내보내기…', shortcut: sc('Mod+P'), action: exportPdf },
-        { label: '마크다운으로 내보내기', action: exportMd },
+        ...(desktop ? [{ divider: true } as const, { label: '끝내기', shortcut: isMac ? '⌘Q' : 'Ctrl+Q', action: () => desktop!.quit() }] : []),
       ],
     },
     {
@@ -1026,6 +1094,19 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       </footer>
       {toast && <div className="toast">{toast}</div>}
       {promptReq && <PromptDialog req={promptReq} onDone={() => setPromptReq(null)} />}
+      {exportOpen && <ExportDialog onPick={exportAs} onClose={() => setExportOpen(false)} />}
+      {obsidianOpen && (
+        <ObsidianDialog
+          vault={settings.obsidianVault}
+          sub={settings.obsidianSub}
+          dir={settings.obsidianDir}
+          docCount={docs.filter((d) => !isTemplateDoc(d)).length}
+          onChange={(v) => setSettings((s) => ({ ...s, ...v }))}
+          onOpenCurrent={obsidianOpenCurrent}
+          onExportAll={obsidianExportAll}
+          onClose={() => setObsidianOpen(false)}
+        />
+      )}
       {lockOpen && <LockDialog onResave={resaveSecure} onClose={() => setLockOpen(false)} onToast={setToast} />}
       {templateOpen && <TemplateDialog docs={docs} onPick={newFromTemplate} onSaveCurrent={saveAsTemplate} onClose={() => setTemplateOpen(false)} />}
       {pdfAsk && (

@@ -8,9 +8,17 @@ export interface OpenedDesktopFile {
 export interface DesktopAPI {
   platform: string
   openDialog(): Promise<void>
+  /** 앱 완전히 끝내기 */
+  quit(): Promise<void>
   writeFile(path: string, content: string): Promise<boolean>
   saveAs(name: string, content: string): Promise<{ path: string; name: string } | null>
-  exportFile(name: string, content: string, ext: string): Promise<boolean>
+  exportFile(name: string, content: string | Uint8Array, ext: string): Promise<boolean>
+  /** Obsidian 보관함 폴더 고르기 (고른 폴더만 쓰기 허용) */
+  chooseExportFolder(): Promise<string | null>
+  /** 고른 폴더 안에 .md 파일들 쓰기 (하위 폴더 자동 생성) */
+  writeExportFiles(root: string, files: { path: string; data: string }[]): Promise<number>
+  /** obsidian:// 또는 웹 주소 열기 */
+  openExternal(url: string): Promise<unknown>
   /** 저장할 PDF 경로 선택 (취소하면 null) */
   choosePdfPath(name: string): Promise<string | null>
   /** 현재 창을 A4 PDF로 인쇄해 선택한 경로에 저장 */

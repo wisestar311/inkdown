@@ -18,9 +18,13 @@ ipcRenderer.on('app:open-file', (_e, f: OpenedDesktopFile) => {
 const api = {
   platform: process.platform,
   openDialog: (): Promise<void> => ipcRenderer.invoke('file:open-dialog'),
+  quit: (): Promise<void> => ipcRenderer.invoke('app:quit'),
   writeFile: (path: string, content: string): Promise<boolean> => ipcRenderer.invoke('file:write', path, content),
   saveAs: (name: string, content: string): Promise<{ path: string; name: string } | null> => ipcRenderer.invoke('file:save-as', name, content),
-  exportFile: (name: string, content: string, ext: string): Promise<boolean> => ipcRenderer.invoke('file:export', name, content, ext),
+  exportFile: (name: string, content: string | Uint8Array, ext: string): Promise<boolean> => ipcRenderer.invoke('file:export', name, content, ext),
+  chooseExportFolder: (): Promise<string | null> => ipcRenderer.invoke('obsidian:choose-folder'),
+  writeExportFiles: (root: string, files: { path: string; data: string }[]): Promise<number> => ipcRenderer.invoke('obsidian:write', root, files),
+  openExternal: (url: string): Promise<unknown> => ipcRenderer.invoke('app:open-external', url),
   choosePdfPath: (name: string): Promise<string | null> => ipcRenderer.invoke('file:choose-pdf', name),
   printToPdf: (): Promise<boolean> => ipcRenderer.invoke('file:print-pdf'),
   onOpenFile(cb: (f: OpenedDesktopFile) => void) {

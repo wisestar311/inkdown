@@ -60,29 +60,32 @@ function createWindow() {
   })
 
   // 닫기 전에 렌더러가 저장·동기화를 마칠 시간을 준다 (최대 4초)
+  // 닫기: 렌더러가 저장·동기화를 마칠 시간(최대 3초)을 준 뒤 창을 강제로 없앤다(destroy).
+  // close()가 아니라 destroy()라서 웹 페이지 쪽 beforeunload 등이 종료를 막을 수 없다.
+  let closing = false
   win.on('close', (e) => {
-    if (!win) return
+    const w = win
+    if (!w || w.isDestroyed()) return
     try {
-      writeFileSync(stateFile(), JSON.stringify(win.getNormalBounds()))
+      writeFileSync(stateFile(), JSON.stringify(w.getNormalBounds()))
     } catch {
       /* 무시 */
     }
-    if ((win as unknown as { __ready?: boolean }).__ready) return
     e.preventDefault()
-    const w = win
-    const done = () => {
-      ;(w as unknown as { __ready?: boolean }).__ready = true
-      w.close()
-    }
-    const timer = setTimeout(done, 4000)
-    ipcMain.once('app:close-ready', () => {
+    if (closing) return
+    closing = true
+    const finish = () => {
       clearTimeout(timer)
-      done()
-    })
+      ipcMain.removeListener('app:close-ready', finish)
+      if (!w.isDestroyed()) w.destroy()
+    }
+    const timer = setTimeout(finish, 3000)
+    ipcMain.on('app:close-ready', finish)
     w.webContents.send('app:before-close')
   })
   win.on('closed', () => {
     win = null
+    // Windows·Linux: 창이 닫히면 앱도 끝냄. macOS는 Cmd+Q(종료)일 때만.
     if (!isMac || quitting) app.quit()
   })
 
@@ -148,6 +151,7 @@ async function openDialog() {
 
 // ---------- IPC ----------
 ipcMain.handle('file:open-dialog', () => openDialog())
+ipcMain.handle('app:quit', () => app.quit())
 
 ipcMain.handle('file:write', async (_e, filePath: string, content: string) => {
   const resolved = path.resolve(filePath)
@@ -168,12 +172,52 @@ ipcMain.handle('file:save-as', async (_e, suggestedName: string, content: string
   return { path: r.filePath, name: path.basename(r.filePath) }
 })
 
-ipcMain.handle('file:export', async (_e, suggestedName: string, content: string, ext: string) => {
+const FORMAT_NAMES: Record<string, string> = { md: '마크다운', txt: '텍스트', html: '웹 페이지', docx: 'Word 문서', zip: 'ZIP 압축 파일', pdf: 'PDF' }
+
+ipcMain.handle('file:export', async (_e, suggestedName: string, content: string | Uint8Array, ext: string) => {
   if (!win) return false
-  const r = await dialog.showSaveDialog(win, { defaultPath: suggestedName, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
+  const r = await dialog.showSaveDialog(win, { defaultPath: suggestedName, filters: [{ name: FORMAT_NAMES[ext] ?? ext.toUpperCase(), extensions: [ext] }] })
   if (r.canceled || !r.filePath) return false
-  await fs.writeFile(r.filePath, content, 'utf8')
+  await fs.writeFile(r.filePath, typeof content === 'string' ? content : Buffer.from(content))
   return true
+})
+
+// ---------- Obsidian 보관함(vault) 폴더로 내보내기 ----------
+// 사용자가 대화상자로 직접 고른 폴더만 쓸 수 있도록, 고른 폴더 목록을 기억해 둔다
+const rootsFile = () => path.join(app.getPath('userData'), 'export-folders.json')
+const loadRoots = (): string[] => {
+  try {
+    return JSON.parse(readFileSync(rootsFile(), 'utf8')) as string[]
+  } catch {
+    return []
+  }
+}
+
+ipcMain.handle('obsidian:choose-folder', async () => {
+  if (!win) return null
+  const r = await dialog.showOpenDialog(win, { title: 'Obsidian 보관함(vault) 폴더 선택', properties: ['openDirectory', 'createDirectory'] })
+  const dir = r.canceled ? null : r.filePaths[0] ?? null
+  if (dir) writeFileSync(rootsFile(), JSON.stringify([...new Set([...loadRoots(), path.resolve(dir)])]))
+  return dir
+})
+
+ipcMain.handle('obsidian:write', async (_e, root: string, files: { path: string; data: string }[]) => {
+  const base = path.resolve(root)
+  if (!loadRoots().includes(base)) throw new Error('폴더를 다시 선택해 주세요')
+  if (!existsSync(base)) throw new Error('폴더를 찾을 수 없습니다. 다시 선택해 주세요')
+  for (const f of files) {
+    const target = path.resolve(base, f.path)
+    if (!target.startsWith(base + path.sep) || !target.endsWith('.md')) throw new Error(`허용되지 않은 경로: ${f.path}`)
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.writeFile(target, f.data, 'utf8')
+  }
+  return files.length
+})
+
+ipcMain.handle('app:open-external', (_e, url: string) => {
+  // Obsidian 앱 주소와 웹 주소만 허용
+  if (/^(obsidian|https?):/.test(url)) return shell.openExternal(url)
+  return false
 })
 
 // PDF: 화면의 편집 화면(손글씨·글상자 포함)을 그대로 A4로 인쇄해 저장
@@ -233,6 +277,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     quitting = true
+    // 안전장치: 무엇이 종료를 붙잡더라도 6초 뒤에는 프로세스를 확실히 끝낸다
+    setTimeout(() => app.exit(0), 6000).unref()
   })
   app.on('window-all-closed', () => {
     if (!isMac) app.quit()

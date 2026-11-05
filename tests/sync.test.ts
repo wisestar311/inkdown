@@ -9,6 +9,7 @@ class FakeGitHub {
   files = new Map<string, { sha: string; content: string }>()
   blobs = new Map<string, string>()
   commits = 0
+  notModified = 0
   empty = false
   private n = 0
 
@@ -25,7 +26,14 @@ class FakeGitHub {
     const parts = url.pathname.split('/').slice(4) // /repos/o/r/...
     if (method === 'GET' && parts[0] === 'git' && parts[1] === 'trees') {
       if (this.empty) return json(409, { message: 'Git Repository is empty.' })
-      return json(200, { truncated: false, tree: [...this.files].map(([path, f]) => ({ path, type: 'blob', sha: f.sha })) })
+      const tree = [...this.files].map(([path, f]) => ({ path, type: 'blob', sha: f.sha }))
+      const etag = `"${hashText(JSON.stringify(tree))}"`
+      const inm = (init?.headers as Record<string, string> | undefined)?.['If-None-Match']
+      if (inm === etag) {
+        this.notModified++
+        return new Response(null, { status: 304 })
+      }
+      return new Response(JSON.stringify({ truncated: false, tree }), { status: 200, headers: { 'Content-Type': 'application/json', ETag: etag } })
     }
     if (method === 'GET' && parts[0] === 'git' && parts[1] === 'blobs') {
       const c = this.blobs.get(parts[2]!)
@@ -320,5 +328,19 @@ describe('동기화', () => {
     d.syncLocal = true
     await A.sync()
     expect([...gh.files.keys()].filter((k) => k.endsWith('.md'))).toEqual(['notes/파일 문서.md'])
+  })
+
+  it('바뀐 게 없으면 304(변경 없음)로 확인만 하고, 다른 기기 변경은 놓치지 않는다', async () => {
+    A.write('주기 확인')
+    await A.sync()
+    await B.sync()
+    const before = gh.notModified
+    await B.sync()
+    await B.sync()
+    expect(gh.notModified - before).toBe(2)
+    A.edit(A.docs[0]!, '# 주기 확인\n\nA에서 고침\n')
+    await A.sync()
+    await B.sync()
+    expect(B.docs[0]!.content).toContain('A에서 고침')
   })
 })

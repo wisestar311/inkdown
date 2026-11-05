@@ -89,6 +89,9 @@ function stamp() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}`
 }
 
+/** 폴더 목록 파일 내용 캐시 (같은 버전이면 다시 받지 않음) */
+let metaCache: { sha: string; folders: string[] } | null = null
+
 export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncReport> {
   const gh = new GitHubClient(cfg)
   const report: SyncReport = { uploaded: 0, downloaded: 0, deleted: 0, conflicts: [], remoteTotal: 0 }
@@ -101,7 +104,8 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
     let remoteFolders: string[] = []
     if (gh.metaSha) {
       try {
-        remoteFolders = (JSON.parse(await gh.getBlob(gh.metaSha)) as { folders?: string[] }).folders ?? []
+        if (metaCache?.sha !== gh.metaSha) metaCache = { sha: gh.metaSha, folders: (JSON.parse(await gh.getBlob(gh.metaSha)) as { folders?: string[] }).folders ?? [] }
+        remoteFolders = metaCache.folders
       } catch {
         remoteFolders = []
       }

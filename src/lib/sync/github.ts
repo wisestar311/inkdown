@@ -31,6 +31,10 @@ export function decodeBase64Utf8(b64: string): string {
 
 const encodePath = (p: string) => p.split('/').map(encodeURIComponent).join('/')
 
+type TreeItem = { path: string; type: string; sha: string }
+/** 저장소 파일 목록 캐시: 바뀐 게 없으면 GitHub이 304(변경 없음)만 돌려줘 요청 한도를 거의 쓰지 않는다 */
+const treeCache = new Map<string, { etag: string; tree: TreeItem[] }>()
+
 export class GitHubClient {
   private emptyRepo = false
 
@@ -83,10 +87,7 @@ export class GitHubClient {
     const map = new Map<string, string>()
     this.metaSha = undefined
     try {
-      const tree = await this.req<{ tree: { path: string; type: string; sha: string }[]; truncated: boolean }>(
-        'GET',
-        `${this.repoPath}/git/trees/${encodeURIComponent(this.cfg.branch)}?recursive=1`,
-      )
+      const tree = { tree: await this.fetchTree() }
       this.emptyRepo = false
       const prefix = this.cfg.folder ? `${this.cfg.folder.replace(/^\/+|\/+$/g, '')}/` : ''
       for (const item of tree.tree) {
@@ -102,6 +103,40 @@ export class GitHubClient {
       throw e
     }
     return map
+  }
+
+  /** 파일 목록 가져오기 (ETag로 변경 여부 확인) */
+  private async fetchTree(): Promise<TreeItem[]> {
+    const key = `${this.cfg.owner}/${this.cfg.repo}@${this.cfg.branch}`
+    const cached = treeCache.get(key)
+    let res: Response
+    try {
+      res = await fetch(`${API}${this.repoPath}/git/trees/${encodeURIComponent(this.cfg.branch)}?recursive=1`, {
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${this.cfg.token}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+          ...(cached ? { 'If-None-Match': cached.etag } : {}),
+        },
+      })
+    } catch {
+      throw new GitHubError(0, '인터넷에 연결할 수 없습니다')
+    }
+    if (res.status === 304 && cached) return cached.tree
+    if (!res.ok) {
+      let msg = res.statusText
+      try {
+        msg = ((await res.json()) as { message?: string }).message ?? msg
+      } catch {
+        /* 본문 없음 */
+      }
+      throw new GitHubError(res.status, humanize(res.status, msg))
+    }
+    const tree = ((await res.json()) as { tree: TreeItem[] }).tree
+    const etag = res.headers.get('ETag')
+    if (etag) treeCache.set(key, { etag, tree })
+    return tree
   }
 
   async getBlob(sha: string): Promise<string> {

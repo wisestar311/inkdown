@@ -68,8 +68,12 @@ const sc = (s: string) => s.replace(/Mod/g, MOD).replace(/Alt/g, isMac ? '⌥' :
 const supportsFolder = webSupportsFolder && !isDesktop
 
 const EMPTY_INK = emptyInk()
-const SYNC_INTERVAL = 60_000
-const SYNC_IDLE = 8_000
+/** 다른 기기 변경 확인 주기 (바뀐 게 없으면 GitHub이 304만 돌려줘 부담이 거의 없음) */
+const SYNC_INTERVAL = 15_000
+/** 입력을 멈추고 올리기까지 */
+const SYNC_IDLE = 3_000
+/** 💾 문서를 내 컴퓨터 파일에 자동 저장하기까지 */
+const FILE_AUTOSAVE = 1_500
 
 const safeFileName = (title: string) => `${title.replace(/[\\/:*?"<>|]/g, '').trim() || '제목 없음'}.md`
 
@@ -325,6 +329,34 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
 
   // 입력을 멈추고 잠시 뒤 업로드
   const contentKey = useMemo(() => docs.map((d) => `${d.updatedAt}${d.moved ? `>${d.folder ?? ''}` : ''}`).join(','), [docs])
+
+  // 폴더를 만들거나 지우면 곧바로 동기화
+  const folderKey = settings.folders.join('|')
+  const firstFolderKey = useRef(folderKey)
+  useEffect(() => {
+    if (!syncCfg.enabled || folderKey === firstFolderKey.current) return
+    firstFolderKey.current = folderKey
+    const t = setTimeout(() => runSyncNow(), 1_000)
+    return () => clearTimeout(t)
+  }, [folderKey, syncCfg.enabled, runSyncNow])
+
+  // 💾 내 컴퓨터 파일과 연결된 문서: 입력을 멈추면 그 파일에도 자동 저장 (Obsidian처럼)
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      for (const d of docsRef.current.filter((x) => x.dirty)) {
+        try {
+          if (desktop && d.localPath) await desktop.writeFile(d.localPath, d.content)
+          else if (handles.current.get(d.id)) await writeHandle(handles.current.get(d.id)!, d.content)
+          else continue
+          const written = d.content
+          updateDocs((list) => list.map((x) => (x.id === d.id && x.content === written ? { ...x, dirty: false } : x)))
+        } catch {
+          /* 권한이 없으면 Ctrl+S 때 다시 시도 */
+        }
+      }
+    }, FILE_AUTOSAVE)
+    return () => clearTimeout(t)
+  }, [contentKey, updateDocs])
   useEffect(() => {
     if (!syncCfg.enabled) return
     const t = setTimeout(() => runSyncNow(), SYNC_IDLE)

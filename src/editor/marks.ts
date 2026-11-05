@@ -22,10 +22,13 @@ const CLOSE_MARK = /^<\/mark\s*>$/i
 const OPEN_U = /^<u\s*>$/i
 const CLOSE_U = /^<\/u\s*>$/i
 
-/** remark가 따로 떼어 놓은 여는 태그·내용·닫는 태그를 하나의 노드로 묶는다 */
+const BR = /^<br\s*\/?>$/i
+
+/** remark가 따로 떼어 놓은 여는 태그·내용·닫는 태그를 하나의 노드로 묶는다. <br>은 줄바꿈으로 */
 function wrapInlineHtml(node: MdNode) {
   const kids = node.children
   if (!kids) return
+  for (const k of kids) if (k.type === 'html' && k.value && BR.test(k.value.trim())) Object.assign(k, { type: 'break', value: undefined })
   for (let i = 0; i < kids.length; i++) {
     const k = kids[i]!
     if (k.type !== 'html' || !k.value) continue
@@ -66,6 +69,8 @@ export const inkdownMarksRemark = $remark('inkdownMarks', () =>
         return `<mark${cls}>${state.containerPhrasing(node, info)}</mark>`
       },
       underline: (node, _p, state, info) => `<u>${state.containerPhrasing(node, info)}</u>`,
+      // 표 칸 안 줄바꿈은 <br> (마크다운 표는 한 칸이 한 줄이라 그대로 두면 공백으로 바뀜)
+      break: (_n, _p, state) => ((state as unknown as { stack: string[] }).stack.includes('tableCell') ? '<br>' : '\\\n'),
     }
     ;(data.toMarkdownExtensions ??= []).push({ handlers })
     return (tree: unknown) => wrapInlineHtml(tree as MdNode)

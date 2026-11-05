@@ -217,7 +217,24 @@ export const WysiwygEditor = forwardRef<EditorHandle, Props>(function WysiwygEdi
       if (destroyed) return
       crepe.editor.action((ctx) => ctx.get(editorViewCtx).focus())
     })
+    // 표 칸 안에서 Enter = 칸 안 줄바꿈 (마크다운 표는 칸 안에 문단을 나눌 수 없어 줄바꿈으로 대신함)
+    const onCellEnter = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+      const sel = document.getSelection()
+      const anchor = sel?.anchorNode
+      const el = anchor instanceof Element ? anchor : anchor?.parentElement
+      if (!el?.closest('.milkdown-table-block td, .milkdown-table-block th')) return
+      e.preventDefault()
+      e.stopPropagation()
+      crepe.editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx)
+        const br = view.state.schema.nodes.hardbreak
+        if (br) view.dispatch(view.state.tr.replaceSelectionWith(br.create()).scrollIntoView())
+      })
+    }
+    root.addEventListener('keydown', onCellEnter, true)
     return () => {
+      root.removeEventListener('keydown', onCellEnter, true)
       destroyed = true
       crepeRef.current = null
       crepe.destroy()

@@ -70,6 +70,8 @@ const sc = (s: string) => s.replace(/Mod/g, MOD).replace(/Alt/g, isMac ? '⌥' :
 const supportsFolder = webSupportsFolder && !isDesktop
 
 const EMPTY_INK = emptyInk()
+/** 모든 기기에 맞추는 보기 설정 항목 */
+const APPEARANCE_KEYS = ['bodyFont', 'headingFont', 'codeFont', 'fontSize', 'lineHeight', 'headingColors'] as const
 /** 다른 기기 변경 확인 주기 (바뀐 게 없으면 GitHub이 304만 돌려줘 부담이 거의 없음) */
 const SYNC_INTERVAL = 15_000
 /** 입력을 멈추고 올리기까지 */
@@ -273,6 +275,20 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         settingsRef.current = { ...settingsRef.current, folders, syncedFolders: folders }
         setSettings((s) => ({ ...s, folders, syncedFolders: folders }))
       },
+      getAppearance() {
+        const s = settingsRef.current
+        if (s.syncAppearance === false || !s.appearanceAt) return null
+        const values: Record<string, unknown> = {}
+        for (const k of APPEARANCE_KEYS) values[k] = s[k]
+        return { updatedAt: s.appearanceAt, values }
+      },
+      setAppearance(a) {
+        if (settingsRef.current.syncAppearance === false) return
+        const patch: Partial<Settings> = { appearanceAt: a.updatedAt }
+        for (const k of APPEARANCE_KEYS) if (k in a.values) (patch as Record<string, unknown>)[k] = a.values[k]
+        settingsRef.current = { ...settingsRef.current, ...patch }
+        setSettings((s) => ({ ...s, ...patch }))
+      },
     }),
     [ensureActive, updateDocs],
   )
@@ -335,7 +351,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const contentKey = useMemo(() => docs.map((d) => `${d.updatedAt}${d.moved ? `>${d.folder ?? ''}` : ''}`).join(','), [docs])
 
   // 폴더를 만들거나 지우면 곧바로 동기화
-  const folderKey = settings.folders.join('|')
+  const folderKey = `${settings.folders.join('|')}#${settings.appearanceAt ?? 0}`
   const firstFolderKey = useRef(folderKey)
   useEffect(() => {
     if (!syncCfg.enabled || folderKey === firstFolderKey.current) return
@@ -349,8 +365,9 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     const t = setTimeout(async () => {
       for (const d of docsRef.current.filter((x) => x.dirty)) {
         try {
-          if (desktop && d.localPath) await desktop.writeFile(d.localPath, d.content)
-          else if (handles.current.get(d.id)) await writeHandle(handles.current.get(d.id)!, d.content)
+          if (desktop && d.localPath) {
+            if (!(await desktop.writeFile(d.localPath, d.content)).ok) continue // 아직 허용 안 된 파일: ⌘S 때 확인
+          } else if (handles.current.get(d.id)) await writeHandle(handles.current.get(d.id)!, d.content)
           else continue
           const written = d.content
           updateDocs((list) => list.map((x) => (x.id === d.id && x.content === written ? { ...x, dirty: false } : x)))
@@ -680,21 +697,34 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
 
   const doSave = useCallback(
     async (forceAs = false) => {
-      const doc = active
+      // 방금 입력한 글자까지 저장되도록 편집기 내용을 먼저 반영
+      editorRef.current?.flush()
+      const doc = docsRef.current.find((d) => d.id === activeIdRef.current) ?? active
       try {
         // 동기화 문서의 "저장" = 지금 동기화
         if (!forceAs && syncCfg.enabled && isSyncable(doc)) {
           // 내 컴퓨터 파일이면서 동기화에도 포함된 문서: 파일에도 저장
-          if (desktop && doc.localPath) await desktop.writeFile(doc.localPath, doc.content)
-          else if (handles.current.get(doc.id)) await writeHandle(handles.current.get(doc.id)!, doc.content)
-          if (doc.fileName) patchDoc(doc.id, { dirty: false })
+          if (desktop && doc.localPath) {
+            const r = await desktop.writeFile(doc.localPath, doc.content, true)
+            if (r.ok) patchDoc(doc.id, { dirty: false })
+            else if (r.reason !== 'cancel') setToast(`파일에 저장하지 못했습니다${r.message ? `: ${r.message}` : ''} — 동기화는 계속합니다`)
+          } else if (handles.current.get(doc.id)) {
+            await writeHandle(handles.current.get(doc.id)!, doc.content)
+            patchDoc(doc.id, { dirty: false })
+          }
           await saveDocs(docsRef.current)
           return runSyncNow(true)
         }
         if (!forceAs && desktop && doc.localPath) {
-          await desktop.writeFile(doc.localPath, doc.content)
-          patchDoc(doc.id, { dirty: false })
-          return setToast(`"${doc.fileName}" 저장됨`)
+          const r = await desktop.writeFile(doc.localPath, doc.content, true)
+          if (r.ok) {
+            patchDoc(doc.id, { dirty: false })
+            return setToast(`"${doc.fileName}" 저장됨`)
+          }
+          if (r.reason === 'cancel') return
+          // 파일이 옮겨졌거나 쓸 수 없으면 다른 이름으로 저장
+          setToast(`원래 파일에 저장하지 못해 다른 이름으로 저장합니다${r.message ? ` (${r.message})` : ''}`)
+          return doSave(true)
         }
         const handle = handles.current.get(doc.id)
         if (handle && !forceAs) {
@@ -1230,7 +1260,9 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       {fontOpen && (
         <FontDialog
           value={{ bodyFont: settings.bodyFont, headingFont: settings.headingFont, codeFont: settings.codeFont, fontSize: settings.fontSize, lineHeight: settings.lineHeight, headingColors: settings.headingColors }}
-          onChange={(v) => setSettings((s) => ({ ...s, ...v }))}
+          onChange={(v) => setSettings((s) => ({ ...s, ...v, appearanceAt: Date.now() }))}
+          syncAppearance={settings.syncAppearance !== false}
+          onSyncAppearance={(on) => setSettings((s) => ({ ...s, syncAppearance: on, ...(on ? { appearanceAt: Date.now() } : {}) }))}
           onClose={() => setFontOpen(false)}
         />
       )}

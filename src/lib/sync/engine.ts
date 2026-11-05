@@ -22,6 +22,9 @@ export interface SyncStore {
   getFolders?(): string[]
   getSyncedFolders?(): string[] | undefined
   setFolders?(folders: string[]): void
+  /** 보기 설정 (없으면 맞추지 않음) */
+  getAppearance?(): Appearance | null
+  setAppearance?(a: Appearance): void
 }
 
 export interface SyncReport {
@@ -90,7 +93,17 @@ function stamp() {
 }
 
 /** 폴더 목록 파일 내용 캐시 (같은 버전이면 다시 받지 않음) */
-let metaCache: { sha: string; folders: string[] } | null = null
+let metaCache: { sha: string; meta: Meta } | null = null
+
+/** 모든 기기에 맞추는 보기 설정 (글꼴·글자 크기·줄 간격·제목 색) */
+export interface Appearance {
+  updatedAt: number
+  values: Record<string, unknown>
+}
+interface Meta {
+  folders?: string[]
+  appearance?: Appearance
+}
 
 export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncReport> {
   const gh = new GitHubClient(cfg)
@@ -99,20 +112,32 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
 
   const remote = await gh.listFiles()
 
-  // 0) 빈 폴더 목록 맞추기 (문서가 들어 있는 폴더는 문서 경로로 저절로 맞춰짐)
+  // 0) 동기화 정보 파일: 빈 폴더 목록 + 글꼴·제목 색 같은 보기 설정
   if (store.getFolders && store.setFolders) {
-    let remoteFolders: string[] = []
+    let remoteMeta: Meta = {}
     if (gh.metaSha) {
       try {
-        if (metaCache?.sha !== gh.metaSha) metaCache = { sha: gh.metaSha, folders: (JSON.parse(await gh.getBlob(gh.metaSha)) as { folders?: string[] }).folders ?? [] }
-        remoteFolders = metaCache.folders
+        if (metaCache?.sha !== gh.metaSha) metaCache = { sha: gh.metaSha, meta: JSON.parse(await gh.getBlob(gh.metaSha)) as Meta }
+        remoteMeta = metaCache.meta
       } catch {
-        remoteFolders = []
+        remoteMeta = {}
       }
     }
+    const remoteFolders = remoteMeta.folders ?? []
     const merged = mergeFolders(remoteFolders, store.getFolders(), store.getSyncedFolders?.())
-    if (merged.join('\n') !== [...remoteFolders].sort((a, b) => a.localeCompare(b, 'ko')).join('\n') || !gh.metaSha) {
-      if (merged.length || gh.metaSha) await gh.putFile(`${folderOf(cfg)}${META_FILE}`, `${JSON.stringify({ folders: merged }, null, 2)}\n`, gh.metaSha, msg('폴더 목록', META_FILE))
+
+    // 보기 설정: 나중에 바꾼 쪽이 이김
+    const localApp = store.getAppearance?.()
+    const remoteApp = remoteMeta.appearance
+    let appearance = remoteApp
+    if (localApp && (!remoteApp || localApp.updatedAt > remoteApp.updatedAt)) appearance = localApp
+    else if (remoteApp && store.setAppearance && (!localApp || remoteApp.updatedAt > localApp.updatedAt)) store.setAppearance(remoteApp)
+
+    const next: Meta = { folders: merged, ...(appearance ? { appearance } : {}) }
+    const sortedRemote = [...remoteFolders].sort((a, b) => a.localeCompare(b, 'ko'))
+    const changed = merged.join('\n') !== sortedRemote.join('\n') || JSON.stringify(appearance ?? null) !== JSON.stringify(remoteApp ?? null)
+    if ((changed || !gh.metaSha) && (merged.length || appearance || gh.metaSha)) {
+      await gh.putFile(`${folderOf(cfg)}${META_FILE}`, `${JSON.stringify(next, null, 2)}\n`, gh.metaSha, msg(appearance !== remoteApp ? '보기 설정·폴더 목록' : '폴더 목록', META_FILE))
     }
     store.setFolders(merged)
   }

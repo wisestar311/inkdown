@@ -10,7 +10,8 @@ export interface DesktopAPI {
   openDialog(): Promise<void>
   /** 앱 완전히 끝내기 */
   quit(): Promise<void>
-  writeFile(path: string, content: string): Promise<boolean>
+  /** 연결된 파일에 쓰기. interactive=true면 처음 쓰는 파일은 저장할지 물어봄 */
+  writeFile(path: string, content: string, interactive?: boolean): Promise<{ ok: boolean; reason?: string; message?: string }>
   saveAs(name: string, content: string): Promise<{ path: string; name: string } | null>
   exportFile(name: string, content: string | Uint8Array, ext: string): Promise<boolean>
   /** Obsidian 보관함 폴더 고르기 (고른 폴더만 쓰기 허용) */

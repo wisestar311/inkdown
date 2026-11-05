@@ -96,6 +96,9 @@ class Device implements SyncStore {
     this.folders = f
     this.synced = f
   }
+  appearance: { updatedAt: number; values: Record<string, unknown> } | null = null
+  getAppearance = () => this.appearance
+  setAppearance = (x: { updatedAt: number; values: Record<string, unknown> }) => void (this.appearance = x)
 
   write(title: string, body = '본문') {
     const doc: Doc = { id: newId(), title, content: `# ${title}\n\n${body}\n`, updatedAt: Date.now() }
@@ -342,5 +345,20 @@ describe('동기화', () => {
     await A.sync()
     await B.sync()
     expect(B.docs[0]!.content).toContain('A에서 고침')
+  })
+
+  it('글꼴·제목 색 설정은 나중에 바꾼 기기 쪽으로 모든 기기가 맞춰진다', async () => {
+    A.appearance = { updatedAt: 1000, values: { headingColors: ['#c0392b', '', '', '', '', ''], bodyFont: 'pretendard' } }
+    await A.sync()
+    await B.sync()
+    expect(B.appearance?.values.headingColors).toEqual(['#c0392b', '', '', '', '', ''])
+    B.appearance = { updatedAt: 2000, values: { headingColors: ['#2471a3', '', '', '', '', ''], bodyFont: 'pretendard' } }
+    await B.sync()
+    await A.sync()
+    expect(A.appearance?.values.headingColors?.[0]).toBe('#2471a3')
+    const c = gh.commits
+    await A.sync()
+    await B.sync()
+    expect(gh.commits).toBe(c)
   })
 })

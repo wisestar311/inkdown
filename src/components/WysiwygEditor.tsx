@@ -49,6 +49,8 @@ export interface EditorHandle {
   run: (cmd: FormatCommand) => void
   scrollToHeading: (index: number) => void
   focus: () => void
+  /** 편집기에 모여 있는 최신 내용을 즉시 반영 (저장 직전에 호출) */
+  flush: () => void
 }
 
 interface Props {
@@ -254,6 +256,15 @@ export const WysiwygEditor = forwardRef<EditorHandle, Props>(function WysiwygEdi
     },
     focus() {
       crepeRef.current?.editor.action((ctx) => ctx.get(editorViewCtx).focus())
+    },
+    flush() {
+      const crepe = crepeRef.current
+      if (!crepe) return
+      try {
+        onChangeRef.current(cleanMarkdown(crepe.getMarkdown()))
+      } catch {
+        /* 편집기가 아직 준비 전 */
+      }
     },
   }))
 

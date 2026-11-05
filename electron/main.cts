@@ -10,7 +10,31 @@ let quitting = false
 let pageReady = false
 
 /** 사용자가 직접 연(더블클릭·드래그·열기) 파일만 다시 쓸 수 있도록 허용 목록 관리 */
-const allowedPaths = new Set<string>()
+/* 사용자가 직접 열거나 저장한 파일만 덮어쓸 수 있도록 허용 목록을 둔다.
+   앱을 다시 켜도 유지되도록 파일에 저장 (예전에는 앱을 켜 둔 동안만 기억해, 재실행 뒤 ⌘S가 오류였음) */
+const allowedFile = () => path.join(app.getPath('userData'), 'allowed-files.json')
+let allowedCache: Set<string> | null = null
+function allowedPaths(): Set<string> {
+  if (!allowedCache) {
+    try {
+      allowedCache = new Set(JSON.parse(readFileSync(allowedFile(), 'utf8')) as string[])
+    } catch {
+      allowedCache = new Set()
+    }
+  }
+  return allowedCache
+}
+function allowPath(p: string) {
+  const set = allowedPaths()
+  const r = path.resolve(p)
+  if (set.has(r)) return
+  set.add(r)
+  try {
+    writeFileSync(allowedFile(), JSON.stringify([...set].slice(-2000)))
+  } catch {
+    /* 무시 */
+  }
+}
 const pendingOpen: string[] = []
 
 // ---------- 창 위치/크기 기억 ----------
@@ -108,7 +132,7 @@ async function sendOpenFile(filePath: string) {
     return
   }
   const content = await fs.readFile(filePath, 'utf8')
-  allowedPaths.add(path.resolve(filePath))
+  allowPath(filePath)
   win.webContents.send('app:open-file', { path: filePath, name: path.basename(filePath), content })
   if (win.isMinimized()) win.restore()
   win.focus()
@@ -153,11 +177,30 @@ async function openDialog() {
 ipcMain.handle('file:open-dialog', () => openDialog())
 ipcMain.handle('app:quit', () => app.quit())
 
-ipcMain.handle('file:write', async (_e, filePath: string, content: string) => {
+/** 연결된 파일에 쓰기. interactive(⌘S)일 때 허용 목록에 없는 파일이면 한 번 물어본다. 자동 저장은 묻지 않고 건너뜀 */
+ipcMain.handle('file:write', async (_e, filePath: string, content: string, interactive = false) => {
   const resolved = path.resolve(filePath)
-  if (!allowedPaths.has(resolved)) throw new Error('허용되지 않은 경로입니다')
-  await fs.writeFile(resolved, content, 'utf8')
-  return true
+  if (!/\.(md|markdown|mdown|txt)$/i.test(resolved)) return { ok: false, reason: 'type', message: '마크다운·텍스트 파일만 저장할 수 있습니다' }
+  if (!allowedPaths().has(resolved)) {
+    if (!interactive || !win) return { ok: false, reason: 'permission' }
+    const r = await dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['저장', '취소'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `"${path.basename(resolved)}" 파일에 저장할까요?`,
+      detail: `${resolved}\n\n이 파일에 처음 저장할 때 한 번만 확인합니다.`,
+    })
+    if (r.response !== 0) return { ok: false, reason: 'cancel' }
+    allowPath(resolved)
+  }
+  try {
+    await fs.mkdir(path.dirname(resolved), { recursive: true })
+    await fs.writeFile(resolved, content, 'utf8')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, reason: 'io', message: (e as Error).message }
+  }
 })
 
 ipcMain.handle('file:save-as', async (_e, suggestedName: string, content: string) => {
@@ -168,7 +211,7 @@ ipcMain.handle('file:save-as', async (_e, suggestedName: string, content: string
   })
   if (r.canceled || !r.filePath) return null
   await fs.writeFile(r.filePath, content, 'utf8')
-  allowedPaths.add(path.resolve(r.filePath))
+  allowPath(r.filePath)
   return { path: r.filePath, name: path.basename(r.filePath) }
 })
 

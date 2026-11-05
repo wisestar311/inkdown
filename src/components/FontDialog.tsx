@@ -10,6 +10,8 @@ interface Props {
   value: FontSettings
   onChange: (v: FontSettings) => void
   onClose: () => void
+  syncAppearance: boolean
+  onSyncAppearance: (on: boolean) => void
 }
 
 function FontSelect({ label, value, options, allowSame, onChange }: { label: string; value: string; options: typeof BODY_FONTS; allowSame?: boolean; onChange: (v: string) => void }) {
@@ -45,7 +47,7 @@ function FontSelect({ label, value, options, allowSame, onChange }: { label: str
   )
 }
 
-export function FontDialog({ value, onChange, onClose }: Props) {
+export function FontDialog({ value, onChange, onClose, syncAppearance, onSyncAppearance }: Props) {
   const set = <K extends keyof FontSettings>(k: K, v: FontSettings[K]) => onChange({ ...value, [k]: v })
   const body = resolveFont(value.bodyFont, BODY_FONTS, FONT_FALLBACK.body)
   const heading = value.headingFont === 'same' ? body : resolveFont(value.headingFont, BODY_FONTS, FONT_FALLBACK.body)
@@ -102,8 +104,12 @@ export function FontDialog({ value, onChange, onClose }: Props) {
         </div>
         금리가 내려가면 예금 이자도 줄어듭니다. 지금부터 준비하면 늦지 않습니다. 0123456789 ABC abc
       </div>
-      <p className="hint">글꼴·제목 색 설정은 이 기기에만 적용됩니다(PDF·Word·HTML로 내보낼 때는 반영). 문서 파일에는 저장되지 않아, 다른 기기에서는 그 기기의 글꼴 설정으로 보입니다.</p>
+      <p className="hint">글꼴·제목 색은 PDF·Word·HTML로 내보낼 때도 반영됩니다. 문서 파일 자체에는 들어가지 않습니다. 문서 파일에는 저장되지 않아, 다른 기기에서는 그 기기의 글꼴 설정으로 보입니다.</p>
 
+      <label className="check-row" style={{ marginTop: 10 }}>
+        <input type="checkbox" checked={syncAppearance} onChange={(e) => onSyncAppearance(e.target.checked)} />
+        이 설정을 동기화된 모든 기기에 똑같이 적용 (끄면 이 기기에서만)
+      </label>
       <div className="modal-actions">
         <button
           className="btn"

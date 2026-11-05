@@ -52,6 +52,10 @@ export interface Settings {
   lineHeight: number
   /** 제목 1~6 색 ('' = 테마 기본색, 그 외 #rrggbb) */
   headingColors: string[]
+  /** 글꼴·제목 색을 마지막으로 바꾼 시각 (기기 간 맞출 때 나중 것이 이김) */
+  appearanceAt?: number
+  /** 글꼴·제목 색을 모든 기기에 맞출지 */
+  syncAppearance?: boolean
   /** 사용자가 만든 폴더 목록(빈 폴더 포함) */
   folders: string[]
   /** 접어 둔 폴더 */

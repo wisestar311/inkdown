@@ -3,6 +3,7 @@ import { Lexer, type Token, type Tokens } from 'marked'
 import type { InkBox, InkData } from './ink'
 import { splitInk } from './ink'
 import { markdownToHtml } from './export'
+import { validColor } from './headingColors'
 
 // ---------- 글상자 → 문서 끝 메모 ----------
 const boxesInOrder = (ink: InkData | null | undefined): InkBox[] =>
@@ -195,7 +196,7 @@ async function loadImage(src: string): Promise<ImageInfo | null> {
   }
 }
 
-export async function toDocx(title: string, content: string): Promise<Uint8Array> {
+export async function toDocx(title: string, content: string, headingColors: string[] = []): Promise<Uint8Array> {
   const d = await import('docx')
   const { body, ink } = splitInk(content)
   const tokens = new Lexer({ gfm: true }).lex(body)
@@ -224,6 +225,7 @@ export async function toDocx(title: string, content: string): Promise<Uint8Array
     underline?: boolean
     code?: boolean
     hl?: string
+    color?: string
   }
   type Run = InstanceType<typeof d.TextRun> | InstanceType<typeof d.ExternalHyperlink> | InstanceType<typeof d.ImageRun>
   const textRun = (text: string, s: Style) =>
@@ -231,6 +233,7 @@ export async function toDocx(title: string, content: string): Promise<Uint8Array
       text,
       bold: s.bold,
       italics: s.italics,
+      ...(s.color ? { color: s.color } : {}),
       strike: s.strike,
       ...(s.underline ? { underline: { color: 'E5484D' } } : {}),
       ...(s.code ? { font: 'Consolas', shading: { type: d.ShadingType.CLEAR, fill: 'F1F3F4', color: 'auto' } } : {}),
@@ -312,7 +315,8 @@ export async function toDocx(title: string, content: string): Promise<Uint8Array
       switch (t.type) {
         case 'heading': {
           const h = t as Tokens.Heading
-          out.push(new d.Paragraph({ heading: HEADINGS[h.depth - 1], children: inline(h.tokens), spacing: { before: 240, after: 120 } }))
+          const color = validColor(headingColors[h.depth - 1])?.slice(1)
+          out.push(new d.Paragraph({ heading: HEADINGS[h.depth - 1], children: inline(h.tokens, color ? { color } : {}), spacing: { before: 240, after: 120 } }))
           break
         }
         case 'paragraph': {

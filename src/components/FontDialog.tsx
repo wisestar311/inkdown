@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Modal } from './Dialog'
 import { BODY_FONTS, CODE_FONTS, CUSTOM_PREFIX, FONT_FALLBACK, resolveFont } from '../lib/fonts'
 import type { Settings } from '../lib/storage'
+import { HEADING_PRESETS, SWATCHES, validColor } from '../lib/headingColors'
 
-type FontSettings = Pick<Settings, 'bodyFont' | 'headingFont' | 'codeFont' | 'fontSize' | 'lineHeight'>
+type FontSettings = Pick<Settings, 'bodyFont' | 'headingFont' | 'codeFont' | 'fontSize' | 'lineHeight' | 'headingColors'>
 
 interface Props {
   value: FontSettings
@@ -65,16 +66,48 @@ export function FontDialog({ value, onChange, onClose }: Props) {
         </div>
       </div>
 
+      <label className="field-label">제목 색</label>
+      <div className="hc-presets">
+        {HEADING_PRESETS.map((p) => (
+          <button key={p.name} className="btn small" onClick={() => set('headingColors', [...p.colors])}>
+            {p.name}
+          </button>
+        ))}
+      </div>
+      {[0, 1, 2, 3, 4, 5].map((i) => {
+        const cur = validColor(value.headingColors[i])
+        const setColor = (c: string) => set('headingColors', value.headingColors.map((x, j) => (j === i ? c : x)))
+        return (
+          <div key={i} className="hc-row">
+            <span className="hc-label">제목 {i + 1}</span>
+            <button className={`hc-swatch none ${!cur ? 'on' : ''}`} title="테마 기본색" onClick={() => setColor('')} />
+            {SWATCHES.map((c) => (
+              <button key={c} className={`hc-swatch ${cur.toLowerCase() === c ? 'on' : ''}`} style={{ background: c }} title={c} onClick={() => setColor(c)} />
+            ))}
+            <input className="hc-custom" type="color" title="직접 고르기" value={cur || '#1f2328'} onChange={(e) => setColor(e.target.value)} />
+          </div>
+        )
+      })}
+
       <div className="font-preview" style={{ fontFamily: body, fontSize: value.fontSize, lineHeight: value.lineHeight }}>
-        <div style={{ fontFamily: heading, fontWeight: 700, fontSize: '1.4em', marginBottom: 6 }}>은퇴 후 현금 흐름 만들기</div>
+        <div className="hc-preview" style={{ fontFamily: heading, fontWeight: 700, marginBottom: 6 }}>
+          {[1, 2, 3, 4, 5, 6].map((n) => {
+            const H = `h${n}` as 'h1'
+            return (
+              <H key={n} style={{ color: validColor(value.headingColors[n - 1]) || undefined }}>
+                제목 {n} · 은퇴 후 현금 흐름 만들기
+              </H>
+            )
+          })}
+        </div>
         금리가 내려가면 예금 이자도 줄어듭니다. 지금부터 준비하면 늦지 않습니다. 0123456789 ABC abc
       </div>
-      <p className="hint">글꼴 설정은 이 기기에만 적용됩니다. 문서 파일에는 저장되지 않아, 다른 기기에서는 그 기기의 글꼴 설정으로 보입니다.</p>
+      <p className="hint">글꼴·제목 색 설정은 이 기기에만 적용됩니다(PDF·Word·HTML로 내보낼 때는 반영). 문서 파일에는 저장되지 않아, 다른 기기에서는 그 기기의 글꼴 설정으로 보입니다.</p>
 
       <div className="modal-actions">
         <button
           className="btn"
-          onClick={() => onChange({ bodyFont: 'system', headingFont: 'same', codeFont: 'system-mono', fontSize: 16, lineHeight: 1.75 })}
+          onClick={() => onChange({ bodyFont: 'system', headingFont: 'same', codeFont: 'system-mono', fontSize: 16, lineHeight: 1.75, headingColors: ['', '', '', '', '', ''] })}
         >
           기본값
         </button>

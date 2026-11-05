@@ -1,5 +1,6 @@
 import { Marked } from 'marked'
 import katex from 'katex'
+import { headingColorCss } from './headingColors'
 import katexCss from 'katex/dist/katex.min.css?inline'
 
 const marked = new Marked({ gfm: true, breaks: false })
@@ -71,11 +72,11 @@ u{text-decoration-color:#e5484d;text-decoration-thickness:2px;text-underline-off
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
-export function buildHtmlDocument(title: string, md: string): string {
+export function buildHtmlDocument(title: string, md: string, headingColors?: string[]): string {
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<style>${katexCss}</style><style>${DOC_CSS}</style></head>
+<style>${katexCss}</style><style>${DOC_CSS}${headingColorCss(headingColors)}</style></head>
 <body><main>${markdownToHtml(md)}</main></body></html>`
 }
 

@@ -16,6 +16,7 @@ import { TEMPLATE_FOLDER } from './templates'
 import { InkLayer, InkToolbar, PEN_COLORS, PEN_SIZES, type InkHandle, type InkToolState } from './components/InkLayer'
 import { type InkData, emptyInk, joinInk, splitInk } from './lib/ink'
 import { BODY_FONTS, CODE_FONTS, FONT_FALLBACK, resolveFont } from './lib/fonts'
+import { validColor } from './lib/headingColors'
 import {
   type Doc,
   type Settings,
@@ -201,7 +202,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     root.style.setProperty('--font-heading', settings.headingFont === 'same' ? 'var(--font-body)' : resolveFont(settings.headingFont, BODY_FONTS, FONT_FALLBACK.body))
     root.style.setProperty('--font-mono', resolveFont(settings.codeFont, CODE_FONTS, FONT_FALLBACK.code))
     root.style.setProperty('--line-height', String(settings.lineHeight))
-  }, [printing, settings.theme, settings.fontSize, settings.contentWidth, settings.bodyFont, settings.headingFont, settings.codeFont, settings.lineHeight])
+    settings.headingColors.forEach((c, i) => (validColor(c) ? root.style.setProperty(`--h${i + 1}-color`, c) : root.style.removeProperty(`--h${i + 1}-color`)))
+  }, [printing, settings.theme, settings.fontSize, settings.contentWidth, settings.bodyFont, settings.headingFont, settings.codeFont, settings.lineHeight, settings.headingColors])
 
   useEffect(() => {
     document.title = `${active.dirty ? '• ' : ''}${active.title} — Inkdown`
@@ -723,10 +725,10 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
 
   const exportHtml = useCallback(() => {
     const name = safeFileName(active.title).replace(/\.md$/, '.html')
-    const html = buildHtmlDocument(active.title, activeBody)
+    const html = buildHtmlDocument(active.title, activeBody, settings.headingColors)
     if (desktop) desktop.exportFile(name, html, 'html')
     else download(name, html, 'text/html;charset=utf-8')
-  }, [active, activeBody])
+  }, [active, activeBody, settings.headingColors])
 
   /** PDF: 편집 화면을 A4 폭(180mm)으로 다시 배치하고 필기 위치를 재계산한 뒤 그대로 인쇄 → 손글씨·글상자 포함 */
   const runPdf = useCallback(async (strokes: boolean) => {
@@ -795,7 +797,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
             return saveFile(`${stem}.md`, toObsidian(active.content), 'md', 'text/markdown;charset=utf-8')
           case 'docx':
             setToast('Word 문서를 만드는 중…')
-            return saveFile(`${stem}.docx`, await toDocx(active.title, active.content), 'docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            return saveFile(`${stem}.docx`, await toDocx(active.title, active.content, settings.headingColors), 'docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
           case 'pdf':
             return exportPdf()
           case 'html':
@@ -812,7 +814,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         setToast(`저장 실패: ${(e as Error).message}`)
       }
     },
-    [active.content, active.title, doSave, exportHtml, exportPdf, saveFile],
+    [active.content, active.title, doSave, exportHtml, exportPdf, saveFile, settings.headingColors],
   )
 
   const isTemplateDoc = (d: Doc) => !!d.folder && (d.folder === TEMPLATE_FOLDER || d.folder.startsWith(`${TEMPLATE_FOLDER}/`))
@@ -1217,7 +1219,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       )}
       {fontOpen && (
         <FontDialog
-          value={{ bodyFont: settings.bodyFont, headingFont: settings.headingFont, codeFont: settings.codeFont, fontSize: settings.fontSize, lineHeight: settings.lineHeight }}
+          value={{ bodyFont: settings.bodyFont, headingFont: settings.headingFont, codeFont: settings.codeFont, fontSize: settings.fontSize, lineHeight: settings.lineHeight, headingColors: settings.headingColors }}
           onChange={(v) => setSettings((s) => ({ ...s, ...v }))}
           onClose={() => setFontOpen(false)}
         />

@@ -208,6 +208,12 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .milkdown .ProseMirror h4 { font-size: 1.15em; }
 .milkdown .ProseMirror h5, .milkdown .ProseMirror h6 { font-size: 1em; }
 .milkdown .ProseMirror h6 { color: var(--muted); }
+.milkdown .ProseMirror h1 { color: var(--h1-color, var(--heading)); }
+.milkdown .ProseMirror h2 { color: var(--h2-color, var(--heading)); }
+.milkdown .ProseMirror h3 { color: var(--h3-color, var(--heading)); }
+.milkdown .ProseMirror h4 { color: var(--h4-color, var(--heading)); }
+.milkdown .ProseMirror h5 { color: var(--h5-color, var(--heading)); }
+.milkdown .ProseMirror h6 { color: var(--h6-color, var(--muted)); }
 .milkdown .ProseMirror p { font-size: 1em; line-height: var(--line-height); }
 .milkdown .ProseMirror li p { font-size: 1em; }
 .milkdown .ProseMirror a { color: var(--accent); }
@@ -478,3 +484,15 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .nosync-reason { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .btn.small { padding: 2px 8px; font-size: 12px; }
 .app-version { color: var(--muted); font-size: 11px; align-self: center; }
+
+/* ============ 제목 색 ============ */
+.hc-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.hc-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+.hc-label { width: 52px; flex-shrink: 0; font-size: 12px; color: var(--muted); font-weight: 600; }
+.hc-swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--menu-bg); box-shadow: 0 0 0 1px var(--border); flex-shrink: 0; }
+.hc-swatch.on { box-shadow: 0 0 0 2px var(--accent); }
+.hc-swatch.none { background: linear-gradient(135deg, var(--bg) 45%, #e5484d 45%, #e5484d 55%, var(--bg) 55%); }
+.hc-custom { width: 26px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
+.hc-preview :is(h1, h2, h3, h4, h5, h6) { margin: 2px 0; line-height: 1.3; }
+.hc-preview h1 { font-size: 1.35em; } .hc-preview h2 { font-size: 1.2em; } .hc-preview h3 { font-size: 1.08em; }
+.hc-preview h4, .hc-preview h5, .hc-preview h6 { font-size: 0.95em; }

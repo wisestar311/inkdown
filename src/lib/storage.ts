@@ -50,6 +50,8 @@ export interface Settings {
   headingFont: string
   codeFont: string
   lineHeight: number
+  /** 제목 1~6 색 ('' = 테마 기본색, 그 외 #rrggbb) */
+  headingColors: string[]
   /** 사용자가 만든 폴더 목록(빈 폴더 포함) */
   folders: string[]
   /** 접어 둔 폴더 */
@@ -96,6 +98,7 @@ export const defaultSettings: Settings = {
   headingFont: 'same',
   codeFont: 'system-mono',
   lineHeight: 1.75,
+  headingColors: ['', '', '', '', '', ''],
   folders: [],
   collapsedFolders: [],
   pdfStrokes: true,

@@ -24,6 +24,7 @@ import {
   type SyncConfig,
   type ThemeId,
   type Tombstone,
+  defaultSettings,
   deriveTitle,
   hashText,
   loadActiveId,
@@ -277,10 +278,14 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       },
       getAppearance() {
         const s = settingsRef.current
-        if (s.syncAppearance === false || !s.appearanceAt) return null
+        if (s.syncAppearance === false) return null
         const values: Record<string, unknown> = {}
         for (const k of APPEARANCE_KEYS) values[k] = s[k]
-        return { updatedAt: s.appearanceAt, values }
+        // 바꾼 시각이 없는 예전 설정: 기본값과 다르면 아주 오래된 시각(1)으로 올림 → 저장소에 이미 있으면 그쪽을 따름
+        const isDefault = APPEARANCE_KEYS.every((k) => JSON.stringify(s[k]) === JSON.stringify(defaultSettings[k]))
+        const at = s.appearanceAt ?? (isDefault ? 0 : 1)
+        if (!at) return null
+        return { updatedAt: at, values }
       },
       setAppearance(a) {
         if (settingsRef.current.syncAppearance === false) return

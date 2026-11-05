@@ -130,8 +130,9 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
     const localApp = store.getAppearance?.()
     const remoteApp = remoteMeta.appearance
     let appearance = remoteApp
+    // 같은 시각(예: 둘 다 예전 버전에서 정한 설정)이면 저장소 쪽(먼저 올라간 기기)을 따른다
     if (localApp && (!remoteApp || localApp.updatedAt > remoteApp.updatedAt)) appearance = localApp
-    else if (remoteApp && store.setAppearance && (!localApp || remoteApp.updatedAt > localApp.updatedAt)) store.setAppearance(remoteApp)
+    else if (remoteApp && store.setAppearance && (!localApp || JSON.stringify(localApp.values) !== JSON.stringify(remoteApp.values))) store.setAppearance(remoteApp)
 
     const next: Meta = { folders: merged, ...(appearance ? { appearance } : {}) }
     const sortedRemote = [...remoteFolders].sort((a, b) => a.localeCompare(b, 'ko'))

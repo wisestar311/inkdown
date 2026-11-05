@@ -361,4 +361,16 @@ describe('동기화', () => {
     await B.sync()
     expect(gh.commits).toBe(c)
   })
+
+  it('예전 버전에서 정한 설정(시각 기록 없음)도 올라가고, 다른 기기는 먼저 올라간 쪽을 따른다', async () => {
+    A.appearance = { updatedAt: 1, values: { headingColors: ['#c0392b', '', '', '', '', ''] } }
+    B.appearance = { updatedAt: 1, values: { headingColors: ['#1e8449', '', '', '', '', ''] } }
+    await A.sync()
+    await B.sync()
+    expect(B.appearance?.values.headingColors?.[0]).toBe('#c0392b')
+    const c = gh.commits
+    await A.sync()
+    await B.sync()
+    expect(gh.commits).toBe(c)
+  })
 })

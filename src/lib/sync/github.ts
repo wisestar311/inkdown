@@ -3,6 +3,8 @@
 import type { SyncConfig } from '../storage'
 
 const API = 'https://api.github.com'
+/** 동기화 폴더 안에 두는 Inkdown 정보 파일 (빈 폴더 목록 등) */
+export const META_FILE = '.inkdown.json'
 
 export class GitHubError extends Error {
   constructor(
@@ -74,8 +76,12 @@ export class GitHubClient {
   }
 
   /** 동기화 폴더 안의 모든 .md 파일: 경로 → blob SHA */
+  /** 동기화 폴더 정보 파일(빈 폴더 목록)의 blob SHA — listFiles 뒤에 채워짐 */
+  metaSha: string | undefined
+
   async listFiles(): Promise<Map<string, string>> {
     const map = new Map<string, string>()
+    this.metaSha = undefined
     try {
       const tree = await this.req<{ tree: { path: string; type: string; sha: string }[]; truncated: boolean }>(
         'GET',
@@ -84,7 +90,8 @@ export class GitHubClient {
       this.emptyRepo = false
       const prefix = this.cfg.folder ? `${this.cfg.folder.replace(/^\/+|\/+$/g, '')}/` : ''
       for (const item of tree.tree) {
-        if (item.type === 'blob' && item.path.startsWith(prefix) && /\.md$/i.test(item.path)) map.set(item.path, item.sha)
+        if (item.type === 'blob' && item.path === `${prefix}${META_FILE}`) this.metaSha = item.sha
+        else if (item.type === 'blob' && item.path.startsWith(prefix) && /\.md$/i.test(item.path)) map.set(item.path, item.sha)
       }
     } catch (e) {
       // 409: 비어 있는 저장소(커밋 없음) — 첫 업로드 때 브랜치가 생성됨

@@ -16,6 +16,8 @@ export interface Doc {
   folder?: string
   /** 이 기기에서 폴더를 옮겨 원격 파일도 옮겨야 함 */
   moved?: boolean
+  /** 내 컴퓨터 파일(💾) 문서지만 동기화에도 포함 */
+  syncLocal?: boolean
   /** 동기화하지 않고 이 기기에만 두는 문서 */
   localOnly?: boolean
   /** 동기화 저장소 안의 경로 (예: notes/회의록.md) */
@@ -52,6 +54,8 @@ export interface Settings {
   folders: string[]
   /** 접어 둔 폴더 */
   collapsedFolders: string[]
+  /** 마지막 동기화 때 맞춘 폴더 목록 (폴더 삭제를 다른 기기에 전하기 위해) */
+  syncedFolders?: string[]
   /** PDF에 손글씨(펜·형광펜·직선) 포함 — 글상자는 항상 포함 */
   pdfStrokes: boolean
   /** Obsidian 보관함(vault) 이름 — 비우면 Obsidian에서 마지막으로 연 보관함 */

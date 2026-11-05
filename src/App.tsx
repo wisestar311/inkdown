@@ -103,6 +103,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   })
   const activeIdRef = useRef(activeId)
   const [settings, setSettings] = useState<Settings>(loadSettings)
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
   const [mode, setMode] = useState<Mode>('wysiwyg')
   const [nonce, setNonce] = useState(0)
   const [folder, setFolder] = useState<{ name: string; tree: TreeNode[] } | null>(null)
@@ -248,6 +250,12 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       setTombstones(t) {
         tombstones.current = t
         saveTombstones(t)
+      },
+      getFolders: () => settingsRef.current.folders,
+      getSyncedFolders: () => settingsRef.current.syncedFolders,
+      setFolders(folders) {
+        settingsRef.current = { ...settingsRef.current, folders, syncedFolders: folders }
+        setSettings((s) => ({ ...s, folders, syncedFolders: folders }))
       },
     }),
     [ensureActive, updateDocs],
@@ -432,6 +440,23 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     }
   }, [lockNow, lockOn])
 
+  // ---------- 동기화 포함/제외 ----------
+  const isWelcome = (d: Doc) => d.content.startsWith('# Inkdown에 오신 것을 환영합니다')
+  const setDocSync = useCallback(
+    (id: string, include: boolean) => {
+      patchDoc(id, include ? { localOnly: false, syncLocal: true } : { localOnly: true })
+      setToast(include ? '동기화에 포함했습니다. 잠시 뒤 다른 기기에도 나타납니다' : '이 기기에만 보관합니다 (이미 올라간 문서는 다른 기기에 남아 있습니다)')
+    },
+    [patchDoc],
+  )
+  const unsyncedDocs = useMemo(() => docs.filter((d) => !isSyncable(d) && d.content.trim() && !isWelcome(d)), [docs])
+  const includeAllInSync = useCallback(() => {
+    const ids = new Set(unsyncedDocs.map((d) => d.id))
+    updateDocs((list) => list.map((d) => (ids.has(d.id) ? { ...d, localOnly: false, syncLocal: true } : d)))
+    setToast(`${ids.size}개 문서를 동기화에 포함했습니다`)
+    setTimeout(() => runSyncNow(true), 300)
+  }, [runSyncNow, unsyncedDocs, updateDocs])
+
   // ---------- 템플릿 ----------
   const isTemplateFolder = (f?: string) => !!f && (f === TEMPLATE_FOLDER || f.startsWith(`${TEMPLATE_FOLDER}/`))
 
@@ -594,6 +619,10 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       try {
         // 동기화 문서의 "저장" = 지금 동기화
         if (!forceAs && syncCfg.enabled && isSyncable(doc)) {
+          // 내 컴퓨터 파일이면서 동기화에도 포함된 문서: 파일에도 저장
+          if (desktop && doc.localPath) await desktop.writeFile(doc.localPath, doc.content)
+          else if (handles.current.get(doc.id)) await writeHandle(handles.current.get(doc.id)!, doc.content)
+          if (doc.fileName) patchDoc(doc.id, { dirty: false })
           await saveDocs(docsRef.current)
           return runSyncNow(true)
         }
@@ -1017,6 +1046,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
             onRenameFolder={renameFolder}
             onDeleteFolder={deleteFolder}
             onMoveDoc={moveDoc}
+            onToggleSync={setDocSync}
             onCollapseSidebar={() => set('sidebarOpen', false)}
             onTemplate={() => setTemplateOpen(true)}
             headings={headings}
@@ -1142,6 +1172,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
             pending: docs.filter((d) => isSyncable(d) && d.content.trim() && (!d.remotePath || d.moved || hashText(d.content) !== d.syncedHash)).length,
           }}
           onSyncNow={() => runSyncNow(true)}
+          unsyncedCount={unsyncedDocs.length}
+          onIncludeAll={includeAllInSync}
         />
       )}
     </div>

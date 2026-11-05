@@ -8,7 +8,7 @@
    - 이 기기에서 삭제   → 원격이 그 사이 바뀌지 않았을 때만 원격 파일 삭제
    - 원격에서 삭제      → 이 기기에서 수정하지 않았다면 함께 삭제, 수정했다면 다시 업로드 */
 import { type Doc, type SyncConfig, type Tombstone, deriveTitle, hashText, newId } from '../storage'
-import { GitHubClient, GitHubError } from './github'
+import { GitHubClient, GitHubError, META_FILE } from './github'
 
 export interface SyncStore {
   getDocs(): Doc[]
@@ -18,6 +18,10 @@ export interface SyncStore {
   removeDoc(id: string): void
   getTombstones(): Tombstone[]
   setTombstones(t: Tombstone[]): void
+  /** 사이드바 폴더 목록(빈 폴더 포함)과, 마지막으로 맞춘 목록 — 빈 폴더도 기기 간에 맞추기 위해 */
+  getFolders?(): string[]
+  getSyncedFolders?(): string[] | undefined
+  setFolders?(folders: string[]): void
 }
 
 export interface SyncReport {
@@ -29,7 +33,16 @@ export interface SyncReport {
   remoteTotal: number
 }
 
-export const isSyncable = (d: Doc) => !d.localOnly && !d.fileName && !d.localPath
+/** 동기화 대상: 이 기기에만 보관(🔒)이 아니고, 내 컴퓨터 파일(💾)이면 '동기화에 포함'을 켠 경우만 */
+export const isSyncable = (d: Doc) => !d.localOnly && (!(d.fileName || d.localPath) || !!d.syncLocal)
+
+/** 폴더 목록 3자 병합: 원격 + 이 기기에서 새로 만든 것 − 이 기기에서 지운 것 */
+export function mergeFolders(remote: string[], local: string[], last: string[] | undefined): string[] {
+  const base = last ?? local
+  const added = local.filter((f) => !base.includes(f))
+  const deleted = base.filter((f) => !local.includes(f))
+  return [...new Set([...remote, ...added, ...(last ? [] : local)])].filter((f) => f && !deleted.includes(f)).sort((a, b) => a.localeCompare(b, 'ko'))
+}
 
 const sanitize = (title: string) =>
   title
@@ -82,6 +95,23 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
   const msg = (verb: string, path: string) => `${verb}: ${baseName(path)} (${cfg.device})`
 
   const remote = await gh.listFiles()
+
+  // 0) 빈 폴더 목록 맞추기 (문서가 들어 있는 폴더는 문서 경로로 저절로 맞춰짐)
+  if (store.getFolders && store.setFolders) {
+    let remoteFolders: string[] = []
+    if (gh.metaSha) {
+      try {
+        remoteFolders = (JSON.parse(await gh.getBlob(gh.metaSha)) as { folders?: string[] }).folders ?? []
+      } catch {
+        remoteFolders = []
+      }
+    }
+    const merged = mergeFolders(remoteFolders, store.getFolders(), store.getSyncedFolders?.())
+    if (merged.join('\n') !== [...remoteFolders].sort((a, b) => a.localeCompare(b, 'ko')).join('\n') || !gh.metaSha) {
+      if (merged.length || gh.metaSha) await gh.putFile(`${folderOf(cfg)}${META_FILE}`, `${JSON.stringify({ folders: merged }, null, 2)}\n`, gh.metaSha, msg('폴더 목록', META_FILE))
+    }
+    store.setFolders(merged)
+  }
   const claimed = new Set<string>()
   const taken = (p: string) => remote.has(p) || claimed.has(p)
 

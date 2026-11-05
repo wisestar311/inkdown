@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { type Doc, hashText } from '../lib/storage'
+import { isSyncable } from '../lib/sync/engine'
 import type { Heading } from '../lib/markdown'
 import type { TreeNode } from '../lib/fileio'
 
@@ -27,6 +28,7 @@ interface Props {
   onDeleteFolder: (path: string) => void
   onMoveDoc: (id: string, folder: string) => void
   onCollapseSidebar: () => void
+  onToggleSync: (id: string, include: boolean) => void
   onTemplate: () => void
 }
 
@@ -41,8 +43,8 @@ function cachedHash(d: Doc) {
 }
 
 function syncBadge(d: Doc, enabled: boolean): { icon: string; title: string } | null {
-  if (d.fileName || d.localPath) return { icon: '💾', title: '내 컴퓨터의 파일 (동기화 안 함)' }
-  if (d.localOnly) return { icon: '🔒', title: '이 기기에만 보관 (동기화 안 함)' }
+  if (d.localOnly) return { icon: '🔒', title: '이 기기에만 보관 (동기화 안 함) — ⋯ 메뉴에서 동기화에 포함할 수 있습니다' }
+  if ((d.fileName || d.localPath) && !d.syncLocal) return { icon: '💾', title: '내 컴퓨터의 파일 (동기화 안 함) — ⋯ 메뉴에서 동기화에 포함할 수 있습니다' }
   if (!enabled) return null
   if (!d.remotePath) return d.content.trim() ? { icon: '↑', title: '업로드 대기' } : null
   if (cachedHash(d) !== d.syncedHash || d.moved) return { icon: '↑', title: '변경 내용 업로드 대기' }
@@ -200,6 +202,16 @@ export function Sidebar(p: Props) {
                 📁 {f.split('/').pop()}
               </button>
             ))}
+            {p.syncEnabled && (
+              <>
+                <div className="popover-sep" />
+                {isSyncable(d) ? (
+                  <button className="popover-item" onClick={() => (setMenu(null), p.onToggleSync(d.id, false))}>🔒 이 기기에만 보관</button>
+                ) : (
+                  <button className="popover-item" onClick={() => (setMenu(null), p.onToggleSync(d.id, true))}>☁ 동기화에 포함하기</button>
+                )}
+              </>
+            )}
             <div className="popover-sep" />
             <button
               className="popover-item danger"

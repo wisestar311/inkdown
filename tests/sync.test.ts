@@ -1,6 +1,6 @@
 /* 동기화 엔진 테스트: GitHub API를 흉내 내는 가짜 서버 위에서 두 기기(A, B)가 동기화하는 시나리오 */
 import { beforeEach, describe, expect, it } from 'vitest'
-import { runSync, type SyncStore } from '../src/lib/sync/engine'
+import { mergeFolders, runSync, type SyncStore } from '../src/lib/sync/engine'
 import { decodeBase64Utf8, encodeBase64Utf8 } from '../src/lib/sync/github'
 import { type Doc, type SyncConfig, type Tombstone, hashText, newId } from '../src/lib/storage'
 
@@ -80,6 +80,14 @@ class Device implements SyncStore {
   removeDoc = (id: string) => void (this.docs = this.docs.filter((d) => d.id !== id))
   getTombstones = () => this.tombs
   setTombstones = (t: Tombstone[]) => void (this.tombs = t)
+  folders: string[] = []
+  synced: string[] | undefined
+  getFolders = () => this.folders
+  getSyncedFolders = () => this.synced
+  setFolders = (f: string[]) => {
+    this.folders = f
+    this.synced = f
+  }
 
   write(title: string, body = '본문') {
     const doc: Doc = { id: newId(), title, content: `# ${title}\n\n${body}\n`, updatedAt: Date.now() }
@@ -277,5 +285,40 @@ describe('동기화', () => {
     await A.sync()
     expect(gh.commits).toBe(c)
     expect([...gh.files.keys()]).toEqual(['notes/직접 만든 파일.md'])
+  })
+
+  it('빈 폴더도 다른 기기에 나타나고, 지우면 다른 기기에서도 사라진다', async () => {
+    A.folders = ['유튜브', '유튜브/대본', '보관']
+    await A.sync()
+    await B.sync()
+    expect(B.folders).toEqual(['보관', '유튜브', '유튜브/대본'])
+    // B에서 '보관' 삭제, A에서 '아이디어' 추가 → 양쪽 반영
+    B.folders = ['유튜브', '유튜브/대본']
+    A.folders = [...A.folders, '아이디어']
+    await B.sync()
+    await A.sync()
+    await B.sync()
+    expect(A.folders).toEqual(['아이디어', '유튜브', '유튜브/대본'])
+    expect(B.folders).toEqual(A.folders)
+    // 변화 없으면 커밋 없음
+    const c = gh.commits
+    await A.sync()
+    await B.sync()
+    expect(gh.commits).toBe(c)
+  })
+
+  it('처음 연결한 기기의 폴더는 기존 폴더와 합쳐진다', () => {
+    expect(mergeFolders(['a'], ['b'], undefined)).toEqual(['a', 'b'])
+    expect(mergeFolders(['a', 'b'], ['b'], ['a', 'b'])).toEqual(['b'])
+  })
+
+  it('내 컴퓨터 파일 문서는 "동기화에 포함"을 켜야 올라간다', async () => {
+    const d = A.write('파일 문서')
+    d.fileName = '파일 문서.md'
+    await A.sync()
+    expect([...gh.files.keys()].filter((k) => k.endsWith('.md'))).toEqual([])
+    d.syncLocal = true
+    await A.sync()
+    expect([...gh.files.keys()].filter((k) => k.endsWith('.md'))).toEqual(['notes/파일 문서.md'])
   })
 })

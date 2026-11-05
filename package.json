@@ -1,7 +1,7 @@
 {
   "name": "inkdown",
   "private": true,
-  "version": "0.3.6",
+  "version": "0.3.7",
   "type": "module",
   "description": "실시간 미리보기 마크다운 에디터 (웹 · Windows · macOS, GitHub 동기화)",
   "scripts": {

@@ -550,3 +550,17 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .table-tool { position: absolute; pointer-events: auto; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--menu-bg); color: var(--muted); font-size: 11px; box-shadow: var(--shadow); }
 .table-tool:hover { color: var(--accent); border-color: var(--accent); }
 @media print { .table-tool { display: none !important; } }
+
+/* ============ 사용 설명서 ============ */
+.help-wrap { display: flex; gap: 12px; margin-top: 10px; }
+.help-toc { width: 170px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; max-height: 58vh; overflow-y: auto; }
+.help-toc button { text-align: left; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: var(--text); }
+.help-toc button:hover { background: var(--hover); }
+.help-toc button.on { background: var(--selected); color: var(--accent); font-weight: 600; }
+.help-toc button.hit { font-weight: 700; color: var(--accent); }
+.help-body { flex: 1; min-width: 0; max-height: 58vh; }
+.help-body table { border-collapse: collapse; margin: 6px 0; width: 100%; }
+.help-body th, .help-body td { border: 1px solid var(--table-line); padding: 4px 8px; text-align: left; }
+.help-body th { background: var(--table-head); }
+.help-body code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; }
+@media (max-width: 640px) { .help-wrap { flex-direction: column; } .help-toc { width: auto; flex-direction: row; flex-wrap: wrap; max-height: none; } }

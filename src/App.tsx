@@ -9,6 +9,7 @@ import { FontDialog } from './components/FontDialog'
 import { TemplateDialog } from './components/TemplateDialog'
 import { LockDialog } from './components/LockDialog'
 import { AboutDialog } from './components/AboutDialog'
+import { HelpDialog } from './components/HelpDialog'
 import { ExportDialog, ObsidianDialog, type ExportFormat } from './components/ExportDialogs'
 import { docsToFiles, makeZip, toDocx, toObsidian, toPlainText } from './lib/convert'
 import { exportAllToVault, openInObsidian } from './lib/obsidian'
@@ -128,6 +129,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const [lockOpen, setLockOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [obsidianOpen, setObsidianOpen] = useState(false)
   const [lockOn, setLockOn] = useState(isLockEnabled)
   const skipUnloadWarn = useRef(false)
@@ -941,12 +943,13 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   // ---------- 단축키 ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen || lockOpen || exportOpen || obsidianOpen || aboutOpen) return
+      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen || lockOpen || exportOpen || obsidianOpen || aboutOpen || helpOpen) return
       const mod = isMac ? e.metaKey : e.ctrlKey
       const k = e.code
       const inText = (e.target as HTMLElement | null)?.tagName === 'TEXTAREA'
       let handled = true
-      if (inkMode && !inText && e.key === 'Escape') setInkMode(false)
+      if (e.key === 'F1') setHelpOpen(true)
+      else if (inkMode && !inText && e.key === 'Escape') setInkMode(false)
       else if (inkMode && !inText && mod && k === 'KeyZ' && !e.shiftKey) inkRef.current?.undo()
       else if (mod && e.shiftKey && k === 'KeyD') toggleInk()
       else if (mod && e.altKey && k === 'KeyL') lockNow()
@@ -988,7 +991,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [active.folder, createDoc, doOpen, doSave, exportPdf, aboutOpen, exportOpen, fmt, fontOpen, lockNow, lockOpen, obsidianOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
+  }, [active.folder, createDoc, doOpen, doSave, exportPdf, aboutOpen, exportOpen, fmt, fontOpen, helpOpen, lockNow, lockOpen, obsidianOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
 
   // ---------- .md 파일 끌어다 놓기 ----------
   useEffect(() => {
@@ -1113,7 +1116,10 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     },
     {
       label: '도움말',
-      items: [{ label: `Inkdown 정보 · 버전 기록 (v${__APP_VERSION__})`, action: () => setAboutOpen(true) }],
+      items: [
+        { label: '사용 설명서', shortcut: 'F1', action: () => setHelpOpen(true) },
+        { label: `Inkdown 정보 · 버전 기록 (v${__APP_VERSION__})`, action: () => setAboutOpen(true) },
+      ],
     },
   ]
 
@@ -1243,6 +1249,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       {toast && <div className="toast">{toast}</div>}
       {promptReq && <PromptDialog req={promptReq} onDone={() => setPromptReq(null)} />}
       {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
+      {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
       {exportOpen && <ExportDialog onPick={exportAs} onClose={() => setExportOpen(false)} />}
       {obsidianOpen && (
         <ObsidianDialog

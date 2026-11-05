@@ -14,6 +14,7 @@ import { docsToFiles, makeZip, toDocx, toObsidian, toPlainText } from './lib/con
 import { exportAllToVault, openInObsidian } from './lib/obsidian'
 import { getLockConfig, isLockEnabled } from './lib/vault'
 import { TEMPLATE_FOLDER } from './templates'
+import { LayoutLayer } from './components/LayoutLayer'
 import { InkLayer, InkToolbar, PEN_COLORS, PEN_SIZES, type InkHandle, type InkToolState } from './components/InkLayer'
 import { type InkData, emptyInk, joinInk, splitInk } from './lib/ink'
 import { BODY_FONTS, CODE_FONTS, FONT_FALLBACK, resolveFont } from './lib/fonts'
@@ -50,7 +51,7 @@ import {
   supportsFolder as webSupportsFolder,
   writeHandle,
 } from './lib/fileio'
-import { buildHtmlDocument } from './lib/export'
+import { buildHtmlDocumentRich } from './lib/export'
 import { desktop, isDesktop } from './lib/desktop'
 import { cleanFolder, isSyncable, runSync, type SyncStore } from './lib/sync/engine'
 import { WELCOME } from './welcome'
@@ -760,12 +761,12 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     [active, patchDoc, runSyncNow, syncCfg.enabled],
   )
 
-  const exportHtml = useCallback(() => {
+  const exportHtml = useCallback(async () => {
     const name = safeFileName(active.title).replace(/\.md$/, '.html')
-    const html = buildHtmlDocument(active.title, activeBody, settings.headingColors)
+    const html = await buildHtmlDocumentRich(active.title, activeBody, settings.headingColors, activeInk?.layout)
     if (desktop) desktop.exportFile(name, html, 'html')
     else download(name, html, 'text/html;charset=utf-8')
-  }, [active, activeBody, settings.headingColors])
+  }, [active, activeBody, activeInk, settings.headingColors])
 
   /** PDF: 편집 화면을 A4 폭(180mm)으로 다시 배치하고 필기 위치를 재계산한 뒤 그대로 인쇄 → 손글씨·글상자 포함 */
   const runPdf = useCallback(async (strokes: boolean) => {
@@ -1057,6 +1058,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         { label: '번호 목록', shortcut: sc('Mod+Shift+['), action: () => fmt({ type: 'ol' }) },
         { label: '글머리 기호 목록', shortcut: sc('Mod+Shift+]'), action: () => fmt({ type: 'ul' }) },
         { label: '구분선', action: () => fmt({ type: 'hr' }) },
+        { label: '도표 (Mermaid)', action: () => fmt({ type: 'mermaid' }) },
       ],
     },
     {
@@ -1191,6 +1193,15 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
               />
             ) : (
               <SourceEditor key={editorKey} ref={sourceRef} initialValue={activeBody} onChange={handleChange} dark={theme.dark} />
+            )}
+            {mode === 'wysiwyg' && (
+              <LayoutLayer
+                key={`layout-${active.id}-${nonce}`}
+                page={getPage}
+                layout={activeInk?.layout ?? []}
+                onChange={(layout) => handleInkChange({ ...(activeInk ?? EMPTY_INK), layout })}
+                hidden={inkMode || printing}
+              />
             )}
             {mode === 'wysiwyg' && (activeInk || inkMode) && (
               <InkLayer key={`ink-${active.id}`} ref={inkRef} page={getPage} ink={activeInk ?? EMPTY_INK} onChange={handleInkChange} active={inkMode} tool={inkTool} />

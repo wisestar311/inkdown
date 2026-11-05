@@ -5,6 +5,8 @@ import type { Ctx } from '@milkdown/kit/ctx'
 import type { MarkType } from '@milkdown/kit/prose/model'
 import { callCommand } from '@milkdown/kit/utils'
 import {
+  addBlockTypeCommand,
+  clearTextInCurrentBlockCommand,
   createCodeBlockCommand,
   insertHrCommand,
   insertImageCommand,
@@ -23,7 +25,24 @@ import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { compressImage } from '../lib/fileio'
+import { renderMermaid } from '../lib/mermaid'
+import { hashText } from '../lib/storage'
 import { clearHighlightCommand, highlightSchema, inkdownMarks, toggleHighlightCommand, toggleUnderlineCommand, underlineSchema } from '../editor/marks'
+
+const MERMAID_SAMPLE = `flowchart LR
+  A[은퇴 준비] --> B{현금 흐름}
+  B -->|부족| C[지출 점검]
+  B -->|충분| D[투자 유지]`
+const DIAGRAM_ICON = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="7" height="5" rx="1"/><rect x="14" y="15" width="7" height="5" rx="1"/><path d="M6.5 9v4.5h11V15"/></svg>`
+
+/** 커서 위치에 머메이드 도표 블록(예시 포함) 넣기 */
+function insertMermaid(ctx: Ctx) {
+  const commands = ctx.get(commandsCtx)
+  const view = ctx.get(editorViewCtx)
+  const node = view.state.schema.nodes.code_block!.create({ language: 'mermaid' }, view.state.schema.text(MERMAID_SAMPLE))
+  commands.call(clearTextInCurrentBlockCommand.key)
+  commands.call(addBlockTypeCommand.key, { nodeType: node })
+}
 
 const HL_ICON = `<svg viewBox="0 0 24 24" width="24" height="24"><path d="M15.2 3.6 20.4 8.8 11 18.2H5.8V13z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><rect x="3" y="19.5" width="18" height="2.5" rx="1" fill="#f5c400"/></svg>`
 const UL_ICON = `<svg viewBox="0 0 24 24" width="24" height="24"><path d="M7 4v7a5 5 0 0 0 10 0V4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`
@@ -43,7 +62,7 @@ export type FormatCommand =
   | { type: 'link'; href: string }
   | { type: 'image'; src: string; alt?: string }
   | { type: 'highlight'; color: string }
-  | { type: 'underline' | 'clearmark' }
+  | { type: 'underline' | 'clearmark' | 'mermaid' }
 
 export interface EditorHandle {
   run: (cmd: FormatCommand) => void
@@ -114,6 +133,9 @@ export const WysiwygEditor = forwardRef<EditorHandle, Props>(function WysiwygEdi
             orderedList: { label: '번호 목록' },
             taskList: { label: '할 일 목록' },
           },
+          buildMenu: (builder) => {
+            builder.getGroup('advanced').addItem('mermaid', { label: '도표 (Mermaid)', icon: DIAGRAM_ICON, onRun: insertMermaid } as never)
+          },
           advancedGroup: {
             label: '고급',
             image: { label: '이미지' },
@@ -152,6 +174,26 @@ export const WysiwygEditor = forwardRef<EditorHandle, Props>(function WysiwygEdi
         },
         [Crepe.Feature.CodeMirror]: {
           theme: dark ? oneDark : [],
+          // 머메이드 도표: 코드 블록 언어를 mermaid로 하면 도표로 그림 (수식 미리보기는 Crepe가 앞에서 처리)
+          renderPreview: (language: string, content: string, apply: (v: null | string | HTMLElement) => void) => {
+            if (language.toLowerCase() !== 'mermaid' || !content.trim()) return null
+            renderMermaid(content, dark)
+              .then((svg) => {
+                const div = document.createElement('div')
+                div.className = 'mermaid-preview'
+                div.dataset.code = hashText(content)
+                div.innerHTML = svg
+                apply(div)
+              })
+              .catch((e: unknown) => {
+                const div = document.createElement('div')
+                div.className = 'mermaid-error'
+                div.textContent = `도표를 그릴 수 없습니다: ${String((e as Error)?.message ?? e).split('\n')[0]}`
+                apply(div)
+              })
+            return undefined
+          },
+          previewOnlyByDefault: true,
           searchPlaceholder: '언어 검색',
           noResultText: '결과 없음',
           previewToggleText: (previewOnly: boolean) => (previewOnly ? '편집' : '숨기기'),
@@ -243,6 +285,7 @@ export const WysiwygEditor = forwardRef<EditorHandle, Props>(function WysiwygEdi
         case 'highlight': call(toggleHighlightCommand.key, cmd.color); break
         case 'underline': call(toggleUnderlineCommand.key); break
         case 'clearmark': call(clearHighlightCommand.key); break
+        case 'mermaid': editor.action(insertMermaid); break
       }
       editor.action((ctx) => ctx.get(editorViewCtx).focus())
     },

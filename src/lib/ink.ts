@@ -31,13 +31,29 @@ export interface InkBox {
   color: string
 }
 
+/** 표 열 폭·그림·머메이드 도표 크기 (마크다운에 담을 수 없어 필기와 함께 저장) */
+export interface LayoutItem {
+  kind: 'table' | 'image' | 'mermaid'
+  /** 같은 종류 중 몇 번째인지 */
+  i: number
+  /** 다시 찾기 위한 지문 (표 머리글, 그림 주소, 도표 코드 앞부분) */
+  f: string
+  /** 그림·도표 폭(px) */
+  w?: number
+  /** 표 열 폭(px) */
+  cols?: number[]
+  /** 표 첫 열 강조를 직접 켜거나 끔 (없으면 자동 판단) */
+  firstCol?: boolean
+}
+
 export interface InkData {
   strokes: InkStroke[]
   boxes: InkBox[]
+  layout?: LayoutItem[]
 }
 
 export const emptyInk = (): InkData => ({ strokes: [], boxes: [] })
-export const isEmptyInk = (ink: InkData | null | undefined) => !ink || (!ink.strokes.length && !ink.boxes.length)
+export const isEmptyInk = (ink: InkData | null | undefined) => !ink || (!ink.strokes.length && !ink.boxes.length && !ink.layout?.length)
 
 const INK_RE = /\n*<!-- inkdown:ink ([A-Za-z0-9+/=]+) -->\s*$/
 
@@ -46,7 +62,7 @@ export function splitInk(content: string): { body: string; ink: InkData | null }
   if (!m) return { body: content, ink: null }
   try {
     const raw = JSON.parse(decodeBase64Utf8(m[1]!)) as Partial<InkData>
-    return { body: content.slice(0, m.index), ink: { strokes: raw.strokes ?? [], boxes: raw.boxes ?? [] } }
+    return { body: content.slice(0, m.index), ink: { strokes: raw.strokes ?? [], boxes: raw.boxes ?? [], ...(raw.layout?.length ? { layout: raw.layout } : {}) } }
   } catch {
     return { body: content.slice(0, m.index), ink: null }
   }
@@ -84,3 +100,11 @@ export function blockAt(y: number, tops: number[]): number {
 }
 
 export const newInkId = () => Math.random().toString(36).slice(2, 9)
+
+/** 같은 종류 목록에서 저장된 항목이 가리키는 위치 찾기 (순번과 지문이 맞으면 그대로, 아니면 지문으로) */
+export function resolveLayout(item: LayoutItem, prints: string[]): number {
+  if (prints[item.i] === item.f) return item.i
+  const j = prints.indexOf(item.f)
+  if (j >= 0) return j
+  return item.i < prints.length ? item.i : -1
+}

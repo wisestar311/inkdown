@@ -4,6 +4,7 @@ import type { InkBox, InkData } from './ink'
 import { splitInk } from './ink'
 import { markdownToHtml } from './export'
 import { validColor } from './headingColors'
+import { isLabelColumn } from './tableStyle'
 
 // ---------- 글상자 → 문서 끝 메모 ----------
 const boxesInOrder = (ink: InkData | null | undefined): InkBox[] =>
@@ -218,6 +219,27 @@ export async function toDocx(title: string, content: string, headingColors: stri
   findImages(tokens)
   await Promise.all([...images.keys()].map(async (src) => images.set(src, await loadImage(src))))
 
+  // 화면에서 조절한 표 열 폭·그림·도표 크기
+  const layout = ink?.layout ?? []
+  const sizeOf = (kind: 'table' | 'image' | 'mermaid', i: number) => layout.find((l) => l.kind === kind && l.i === i)
+  let tableNo = 0
+  let imageNo = 0
+  let mermaidNo = 0
+  // 머메이드 도표는 미리 그림(PNG)으로
+  const mermaidCodes: string[] = []
+  const findMermaid = (ts: Token[]) => ts.forEach((t) => (t.type === 'code' && /^mermaid$/i.test((t as Tokens.Code).lang ?? '') ? mermaidCodes.push((t as Tokens.Code).text) : (t as { tokens?: Token[] }).tokens && findMermaid((t as { tokens: Token[] }).tokens)))
+  findMermaid(tokens)
+  const mermaidPngs = await Promise.all(
+    mermaidCodes.map(async (code, i) => {
+      try {
+        const { renderMermaid, svgToPng } = await import('./mermaid')
+        return await svgToPng(await renderMermaid(code, false), Math.min(600, sizeOf('mermaid', i)?.w ?? 600))
+      } catch {
+        return null
+      }
+    }),
+  )
+
   interface Style {
     bold?: boolean
     italics?: boolean
@@ -267,7 +289,9 @@ export async function toDocx(title: string, content: string, headingColors: stri
         }
         case 'image': {
           const im = images.get((t as Tokens.Image).href)
-          if (im) runs.push(new d.ImageRun({ type: 'png', data: im.data, transformation: { width: im.width, height: im.height } }))
+          const want = sizeOf('image', imageNo++)?.w
+          const scale = want && im ? Math.min(600, want) / im.width : 1
+          if (im) runs.push(new d.ImageRun({ type: 'png', data: im.data, transformation: { width: Math.round(im.width * scale), height: Math.round(im.height * scale) } }))
           else runs.push(textRun(`[이미지: ${(t as Tokens.Image).text || (t as Tokens.Image).href.slice(0, 40)}]`, s))
           break
         }
@@ -349,6 +373,13 @@ export async function toDocx(title: string, content: string, headingColors: stri
         }
         case 'code': {
           const c = t as Tokens.Code
+          if (/^mermaid$/i.test(c.lang ?? '')) {
+            const png = mermaidPngs[mermaidNo++]
+            if (png) {
+              out.push(new d.Paragraph({ alignment: d.AlignmentType.CENTER, children: [new d.ImageRun({ type: 'png', data: png.data, transformation: { width: png.width, height: png.height } })] }))
+              break
+            }
+          }
           for (const line of c.text.split('\n'))
             out.push(
               new d.Paragraph({
@@ -362,16 +393,24 @@ export async function toDocx(title: string, content: string, headingColors: stri
         }
         case 'table': {
           const tb = t as Tokens.Table
-          const cell = (c: Tokens.TableCell, header: boolean) =>
+          const tIndex = tableNo
+          const override = sizeOf('table', tIndex)?.firstCol
+          const labelCol = override ?? isLabelColumn(tb.header.map((h) => h.text), tb.rows.map((r) => r.map((c) => c.text)))
+          const cell = (c: Tokens.TableCell, header: boolean, col = -1) =>
             new d.TableCell({
-              children: [new d.Paragraph({ children: inline(c.tokens, header ? { bold: true } : {}) })],
-              ...(header ? { shading: { type: d.ShadingType.CLEAR, fill: 'F6F8FA', color: 'auto' } } : {}),
+              children: [new d.Paragraph({ children: inline(c.tokens, header || (labelCol && col === 0) ? { bold: true } : {}) })],
+              ...(header ? { shading: { type: d.ShadingType.CLEAR, fill: 'E3EBF5', color: 'auto' } } : labelCol && col === 0 ? { shading: { type: d.ShadingType.CLEAR, fill: 'F1F5FA', color: 'auto' } } : {}),
               margins: { top: 60, bottom: 60, left: 100, right: 100 },
             })
+          const line = { style: d.BorderStyle.SINGLE, size: 6, color: 'B9BEC5' }
+          const cols = sizeOf('table', tableNo++)?.cols
           out.push(
             new d.Table({
-              width: { size: 100, type: d.WidthType.PERCENTAGE },
-              rows: [new d.TableRow({ tableHeader: true, children: tb.header.map((c) => cell(c, true)) }), ...tb.rows.map((r) => new d.TableRow({ children: r.map((c) => cell(c, false)) }))],
+              borders: { top: line, bottom: line, left: line, right: line, insideHorizontal: line, insideVertical: line },
+              ...(cols?.length === tb.header.length
+                ? { width: { size: cols.reduce((a, b) => a + b, 0) * 15, type: d.WidthType.DXA }, columnWidths: cols.map((w) => w * 15), layout: d.TableLayoutType.FIXED }
+                : { width: { size: 100, type: d.WidthType.PERCENTAGE } }),
+              rows: [new d.TableRow({ tableHeader: true, children: tb.header.map((c) => cell(c, true)) }), ...tb.rows.map((r) => new d.TableRow({ children: r.map((c, j) => cell(c, false, j)) }))],
             }),
           )
           out.push(new d.Paragraph({ children: [] }))

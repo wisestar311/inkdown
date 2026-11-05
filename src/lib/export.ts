@@ -1,6 +1,7 @@
 import { Marked } from 'marked'
 import katex from 'katex'
 import { headingColorCss } from './headingColors'
+import { isLabelColumn } from './tableStyle'
 import katexCss from 'katex/dist/katex.min.css?inline'
 
 const marked = new Marked({ gfm: true, breaks: false })
@@ -59,10 +60,11 @@ code{font-family:"JetBrains Mono",Menlo,Consolas,monospace;font-size:.9em;backgr
 pre{background:#f8f8f8;border:1px solid #e7eaed;border-radius:4px;padding:12px 16px;overflow:auto}
 pre code{background:none;padding:0}
 table{border-collapse:collapse;margin:1em 0}
-th,td{border:1px solid #dfe2e5;padding:6px 13px}
-th{background:#f6f8fa}
+th,td{border:1px solid #b9bec5;padding:6px 13px}
+th{background:#e3ebf5;font-weight:700}thead tr th{border-bottom:2px solid #b9bec5}
+@media print{th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 hr{border:0;border-top:2px solid #eee;margin:2em 0}
-.math-block{text-align:center;margin:1em 0;overflow-x:auto}
+.math-block{text-align:center;margin:1em 0;overflow-x:auto}\n.mermaid{text-align:center;margin:1em 0}.mermaid svg{max-width:100%;height:auto}
 input[type=checkbox]{margin-right:.4em}
 mark{background:rgba(255,214,10,.45);color:inherit;border-radius:3px;padding:0 .1em}
 mark.green{background:rgba(126,231,135,.45)}mark.pink{background:rgba(255,143,177,.45)}mark.blue{background:rgba(121,192,255,.45)}mark.orange{background:rgba(255,166,77,.45)}
@@ -96,4 +98,53 @@ export function printDocument(title: string, md: string) {
     iframe.contentWindow!.print()
     done()
   }, 300)
+}
+
+/** HTML 내보내기: 화면에서 조절한 표 열 폭·그림 크기를 반영하고, 머메이드 코드는 도표(SVG)로 바꾼다 */
+export async function buildHtmlDocumentRich(title: string, md: string, headingColors?: string[], layout: { kind: string; i: number; w?: number; cols?: number[] }[] = []): Promise<string> {
+  const html = buildHtmlDocument(title, md, headingColors)
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const sizeOf = (kind: string, i: number) => layout.find((l) => l.kind === kind && l.i === i)
+  doc.querySelectorAll('main table').forEach((t, i) => {
+    // 첫 열이 '구분' 열이면 배경색
+    const rows = [...t.querySelectorAll('tr')]
+    const head = rows[0] ? [...rows[0].children].map((c) => c.textContent ?? '') : []
+    const body = rows.slice(1).map((r) => [...r.children].map((c) => c.textContent ?? ''))
+    const override = (sizeOf('table', i) as { firstCol?: boolean } | undefined)?.firstCol
+    if (override ?? isLabelColumn(head, body)) rows.slice(1).forEach((r) => r.firstElementChild?.setAttribute('style', 'background:#f1f5fa;font-weight:600'))
+    const cols = sizeOf('table', i)?.cols
+    if (!cols?.length) return
+    const cg = doc.createElement('colgroup')
+    cols.forEach((w) => {
+      const c = doc.createElement('col')
+      c.setAttribute('style', `width:${w}px`)
+      cg.appendChild(c)
+    })
+    t.prepend(cg)
+    t.setAttribute('style', `table-layout:fixed;width:${cols.reduce((a, b) => a + b, 0)}px;max-width:100%`)
+  })
+  // 문단에 그림 하나만 있는 경우가 편집 화면의 그림 블록
+  ;[...doc.querySelectorAll('main p')].filter((p) => p.children.length === 1 && p.firstElementChild?.tagName === 'IMG' && !p.textContent?.trim()).forEach((p, i) => {
+    const w = sizeOf('image', i)?.w
+    if (w) p.firstElementChild!.setAttribute('style', `width:${w}px;max-width:100%;height:auto`)
+  })
+  const blocks = [...doc.querySelectorAll('main pre > code.language-mermaid')]
+  if (blocks.length) {
+    const { renderMermaid } = await import('./mermaid')
+    for (const [i, code] of blocks.entries()) {
+      try {
+        const svg = await renderMermaid(code.textContent ?? '', false)
+        const div = doc.createElement('div')
+        div.className = 'mermaid'
+        div.innerHTML = svg
+        const w = sizeOf('mermaid', i)?.w
+        const el = div.querySelector('svg')
+        if (el && w) el.setAttribute('style', `width:${w}px;max-width:100%;height:auto`)
+        code.parentElement!.replaceWith(div)
+      } catch {
+        /* 그리지 못하면 코드 그대로 */
+      }
+    }
+  }
+  return `<!doctype html>\n${doc.documentElement.outerHTML}`
 }

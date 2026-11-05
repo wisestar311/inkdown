@@ -185,7 +185,7 @@ export const InkLayer = forwardRef<InkHandle, Props>(function InkLayer({ page, i
       return true
     },
     clear() {
-      commit({ strokes: [], boxes: [] })
+      commit({ ...inkRef.current, strokes: [], boxes: [] })
     },
   }))
 

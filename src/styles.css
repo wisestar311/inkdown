@@ -471,3 +471,10 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .sync-panel code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; }
 
 .sync-panel.warn { border-color: #d29922; background: rgba(210, 153, 34, 0.08); }
+
+.nosync-list { list-style: none; margin: 6px 0; padding: 0; max-height: 180px; overflow-y: auto; }
+.nosync-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-top: 1px dashed var(--border); }
+.nosync-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nosync-reason { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.btn.small { padding: 2px 8px; font-size: 12px; }
+.app-version { color: var(--muted); font-size: 11px; align-self: center; }

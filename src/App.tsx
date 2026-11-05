@@ -251,7 +251,15 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         tombstones.current = t
         saveTombstones(t)
       },
-      getFolders: () => settingsRef.current.folders,
+      // 사용자가 만든 폴더 + 문서가 들어 있는 폴더(상위 폴더 포함)
+      getFolders: () => {
+        const set = new Set(settingsRef.current.folders)
+        for (const d of docsRef.current) {
+          const parts = (d.folder ?? '').split('/').filter(Boolean)
+          parts.forEach((_, i) => set.add(parts.slice(0, i + 1).join('/')))
+        }
+        return [...set]
+      },
       getSyncedFolders: () => settingsRef.current.syncedFolders,
       setFolders(folders) {
         settingsRef.current = { ...settingsRef.current, folders, syncedFolders: folders }
@@ -450,6 +458,27 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     [patchDoc],
   )
   const unsyncedDocs = useMemo(() => docs.filter((d) => !isSyncable(d) && d.content.trim() && !isWelcome(d)), [docs])
+  /** 동기화 상태 화면에 보여 줄 '올라가지 않은 문서'와 이유 */
+  const notSyncedList = useMemo(
+    () =>
+      docs
+        .filter((d) => !isWelcome(d))
+        .map((d) => ({
+          id: d.id,
+          title: d.title || '제목 없음',
+          reason: d.localOnly
+            ? '🔒 이 기기에만 보관'
+            : (d.fileName || d.localPath) && !d.syncLocal
+              ? '💾 내 컴퓨터 파일'
+              : !d.content.trim()
+                ? '빈 문서 (내용을 쓰면 올라감)'
+                : !d.remotePath || d.moved || hashText(d.content) !== d.syncedHash
+                  ? '↑ 올릴 차례 (곧 올라감)'
+                  : '',
+        }))
+        .filter((x) => x.reason),
+    [docs],
+  )
   const includeAllInSync = useCallback(() => {
     const ids = new Set(unsyncedDocs.map((d) => d.id))
     updateDocs((list) => list.map((d) => (ids.has(d.id) ? { ...d, localOnly: false, syncLocal: true } : d)))
@@ -1173,6 +1202,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
           }}
           onSyncNow={() => runSyncNow(true)}
           unsyncedCount={unsyncedDocs.length}
+          notSynced={notSyncedList}
+          onToggleSync={setDocSync}
           onIncludeAll={includeAllInSync}
         />
       )}

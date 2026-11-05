@@ -20,6 +20,8 @@ interface Props {
   onSyncNow: () => void
   unsyncedCount: number
   onIncludeAll: () => void
+  notSynced: { id: string; title: string; reason: string }[]
+  onToggleSync: (id: string, include: boolean) => void
 }
 
 const when = (t: number | null) => (t ? new Date(t).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '아직 없음')
@@ -47,7 +49,7 @@ function StatusPanel({ config, status, onSyncNow }: { config: SyncConfig; status
   )
 }
 
-export function SyncDialog({ config, onSave, onClose, syncStatus, onSyncNow, unsyncedCount, onIncludeAll }: Props) {
+export function SyncDialog({ config, onSave, onClose, syncStatus, onSyncNow, unsyncedCount, onIncludeAll, notSynced, onToggleSync }: Props) {
   const [repo, setRepo] = useState(config.owner && config.repo ? `${config.owner}/${config.repo}` : '')
   const [token, setToken] = useState(config.token)
   const [branch, setBranch] = useState(config.branch || 'main')
@@ -93,17 +95,32 @@ export function SyncDialog({ config, onSave, onClose, syncStatus, onSyncNow, uns
   return (
     <Modal title="기기 간 동기화 (GitHub)" onClose={onClose} width={520}>
       <StatusPanel config={config} status={syncStatus} onSyncNow={onSyncNow} />
-      {config.enabled && unsyncedCount > 0 && (
+      {config.enabled && notSynced.length > 0 && (
         <div className="sync-panel warn">
           <div className="sync-panel-row">
             <span>
-              동기화되지 않는 문서 <b>{unsyncedCount}개</b> (💾 내 컴퓨터 파일 · 🔒 이 기기에만 보관)
+              아직 저장소에 없는 문서 <b>{notSynced.length}개</b>
             </span>
-            <button className="btn primary" onClick={onIncludeAll}>
-              모두 동기화에 포함
-            </button>
+            {unsyncedCount > 0 && (
+              <button className="btn primary" onClick={onIncludeAll}>
+                💾·🔒 모두 동기화에 포함
+              </button>
+            )}
           </div>
-          <div className="hint" style={{ margin: 0 }}>동기화를 켜기 전에 Ctrl+S로 파일 저장했거나, 열기로 불러온 문서입니다. 포함해도 내 컴퓨터의 원래 파일은 그대로 두고 함께 저장합니다.</div>
+          <ul className="nosync-list">
+            {notSynced.map((d) => (
+              <li key={d.id}>
+                <span className="nosync-title">{d.title}</span>
+                <span className="nosync-reason">{d.reason}</span>
+                {(d.reason.startsWith('💾') || d.reason.startsWith('🔒')) && (
+                  <button className="btn small" onClick={() => onToggleSync(d.id, true)}>
+                    포함
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="hint" style={{ margin: 0 }}>💾·🔒 문서는 포함해야 올라갑니다. 포함해도 내 컴퓨터의 원래 파일은 그대로 둡니다.</div>
         </div>
       )}
       <ol className="sync-guide">
@@ -151,6 +168,9 @@ export function SyncDialog({ config, onSave, onClose, syncStatus, onSyncNow, uns
             동기화 끄기
           </button>
         )}
+        <span className="app-version">
+          Inkdown {__APP_VERSION__} · {new Date(__APP_BUILD__).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 빌드
+        </span>
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={onClose}>닫기</button>
         <button className="btn primary" disabled={busy} onClick={connect}>연결</button>

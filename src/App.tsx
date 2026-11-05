@@ -8,6 +8,7 @@ import { SyncDialog } from './components/SyncDialog'
 import { FontDialog } from './components/FontDialog'
 import { TemplateDialog } from './components/TemplateDialog'
 import { LockDialog } from './components/LockDialog'
+import { AboutDialog } from './components/AboutDialog'
 import { ExportDialog, ObsidianDialog, type ExportFormat } from './components/ExportDialogs'
 import { docsToFiles, makeZip, toDocx, toObsidian, toPlainText } from './lib/convert'
 import { exportAllToVault, openInObsidian } from './lib/obsidian'
@@ -122,6 +123,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const [templateOpen, setTemplateOpen] = useState(false)
   const [lockOpen, setLockOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const [obsidianOpen, setObsidianOpen] = useState(false)
   const [lockOn, setLockOn] = useState(isLockEnabled)
   const skipUnloadWarn = useRef(false)
@@ -903,7 +905,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   // ---------- 단축키 ----------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen || lockOpen || exportOpen || obsidianOpen) return
+      if (promptReq || syncOpen || fontOpen || pdfAsk || templateOpen || lockOpen || exportOpen || obsidianOpen || aboutOpen) return
       const mod = isMac ? e.metaKey : e.ctrlKey
       const k = e.code
       const inText = (e.target as HTMLElement | null)?.tagName === 'TEXTAREA'
@@ -950,7 +952,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [active.folder, createDoc, doOpen, doSave, exportPdf, exportOpen, fmt, fontOpen, lockNow, lockOpen, obsidianOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
+  }, [active.folder, createDoc, doOpen, doSave, exportPdf, aboutOpen, exportOpen, fmt, fontOpen, lockNow, lockOpen, obsidianOpen, pdfAsk, templateOpen, inkMode, insertImage, insertLink, mode, promptReq, set, settings.focusMode, settings.sidebarOpen, settings.typewriterMode, syncOpen, toggleInk, toggleMode, zoom])
 
   // ---------- .md 파일 끌어다 놓기 ----------
   useEffect(() => {
@@ -1072,6 +1074,10 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         { label: '글꼴 및 문단…', action: () => setFontOpen(true) },
       ],
     },
+    {
+      label: '도움말',
+      items: [{ label: `Inkdown 정보 · 버전 기록 (v${__APP_VERSION__})`, action: () => setAboutOpen(true) }],
+    },
   ]
 
   const getScroller = useCallback(() => scrollRef.current, [])
@@ -1159,6 +1165,9 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       </div>
       <footer className="statusbar">
         <div className="left">
+          <button className="status-btn version" title="버전 정보 · 바뀐 내용" onClick={() => setAboutOpen(true)}>
+            v{__APP_VERSION__}
+          </button>
           <button className="status-btn" title={`사이드바 (${sc('Mod+Shift+L')})`} onClick={() => set('sidebarOpen', !settings.sidebarOpen)}>☰</button>
           <button className={`status-btn ${mode === 'source' ? 'on' : ''}`} title={`원문 모드 (${sc('Mod+/')})`} onClick={toggleMode}>{'</>'}</button>
           <button className={`status-btn ${inkMode ? 'on' : ''}`} title={`필기 모드 (${sc('Mod+Shift+D')})`} onClick={toggleInk}>✎</button>
@@ -1187,6 +1196,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       </footer>
       {toast && <div className="toast">{toast}</div>}
       {promptReq && <PromptDialog req={promptReq} onDone={() => setPromptReq(null)} />}
+      {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
       {exportOpen && <ExportDialog onPick={exportAs} onClose={() => setExportOpen(false)} />}
       {obsidianOpen && (
         <ObsidianDialog

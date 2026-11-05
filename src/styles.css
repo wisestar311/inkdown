@@ -496,3 +496,11 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .hc-preview :is(h1, h2, h3, h4, h5, h6) { margin: 2px 0; line-height: 1.3; }
 .hc-preview h1 { font-size: 1.35em; } .hc-preview h2 { font-size: 1.2em; } .hc-preview h3 { font-size: 1.08em; }
 .hc-preview h4, .hc-preview h5, .hc-preview h6 { font-size: 0.95em; }
+
+/* ============ 버전 정보 ============ */
+.status-btn.version { font-family: var(--font-ui); font-size: 11px; color: var(--muted); }
+.about-head { display: flex; align-items: center; gap: 12px; }
+.about-version { font-size: 18px; font-weight: 700; color: var(--heading); }
+.about-log { max-height: 46vh; overflow-y: auto; padding: 4px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-size: 13px; line-height: 1.6; }
+.about-log h2 { font-size: 14px; margin: 12px 0 4px; color: var(--heading); }
+.about-log ul { margin: 0; padding-left: 18px; }

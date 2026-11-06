@@ -182,6 +182,25 @@ describe('동기화', () => {
     expect(B.docs).toHaveLength(0)
   })
 
+  it('올리는 도중에 지운 문서는 되살아나지 않는다 (가져오기 직후 대량 업로드 중 삭제)', async () => {
+    const docs = Array.from({ length: 5 }, (_, i) => A.write(`노트${i}`))
+    // 세 번째 파일을 올리는 순간 사용자가 그 문서(아직 올라가는 중)와 첫 문서를 지움
+    const orig = gh.handle
+    let puts = 0
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT' && ++puts === 3) A.delete(docs[0]!), A.delete(docs[2]!)
+      return orig(input, init)
+    }) as typeof fetch
+    await A.sync()
+    globalThis.fetch = gh.handle as typeof fetch
+    await A.sync()
+    await A.sync()
+    expect(A.docs.map((d) => d.title).sort()).toEqual(['노트1', '노트3', '노트4'])
+    expect([...gh.files.keys()].sort()).toEqual(['notes/노트1.md', 'notes/노트3.md', 'notes/노트4.md'])
+    await B.sync()
+    expect(B.docs).toHaveLength(3)
+  })
+
   it('삭제 직전에 다른 기기가 고쳤다면 삭제하지 않고 살린다', async () => {
     const doc = A.write('살릴 문서')
     await A.sync()

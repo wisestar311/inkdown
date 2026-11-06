@@ -144,6 +144,11 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
   }
   const claimed = new Set<string>()
   const taken = (p: string) => remote.has(p) || claimed.has(p)
+  /** 올리는 사이 사용자가 문서를 지웠으면, 방금 올린 파일도 다음 동기화 때 지우도록 표시 */
+  const record = (id: string, path: string, patch: Partial<Doc> & { remoteSha: string }) => {
+    if (store.patchDoc(id, patch) || store.getDocs().some((d) => d.id === id)) return
+    store.setTombstones([...store.getTombstones(), { path, sha: patch.remoteSha }])
+  }
 
   // 1) 이 기기에서 삭제한 문서
   const remaining: Tombstone[] = []
@@ -173,7 +178,7 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
       const path = uniquePath(cfg, sanitize(doc.title), taken, doc.folder)
       const sha = await gh.putFile(path, content, undefined, msg('새 문서', path))
       claimed.add(path)
-      store.patchDoc(doc.id, { remotePath: path, remoteSha: sha, syncedHash: hash, moved: false })
+      record(doc.id, path, { remotePath: path, remoteSha: sha, syncedHash: hash, moved: false })
       report.uploaded++
       continue
     }
@@ -189,7 +194,7 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
         report.deleted++
       } else {
         const sha = await gh.putFile(path, content, undefined, msg('복원', path))
-        store.patchDoc(doc.id, { remoteSha: sha, syncedHash: hash })
+        record(doc.id, path, { remoteSha: sha, syncedHash: hash })
         report.uploaded++
       }
       continue
@@ -211,10 +216,10 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
         await gh.deleteFile(path, rs, msg(folderChanged ? '이동' : '이름 변경', path))
         remote.delete(path)
         claimed.add(next)
-        store.patchDoc(doc.id, { remotePath: next, remoteSha: sha, syncedHash: hash, moved: false })
+        record(doc.id, next, { remotePath: next, remoteSha: sha, syncedHash: hash, moved: false })
       } else {
         const sha = await gh.putFile(path, content, rs, msg('수정', path))
-        store.patchDoc(doc.id, { remoteSha: sha, syncedHash: hash })
+        record(doc.id, path, { remoteSha: sha, syncedHash: hash })
       }
       report.uploaded++
       continue
@@ -248,7 +253,7 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
       folder: folderFromPath(cfg, copyPath),
     })
     const sha = await gh.putFile(path, content, rs, msg('수정(충돌 해결)', path))
-    store.patchDoc(doc.id, { remoteSha: sha, syncedHash: hash })
+    record(doc.id, path, { remoteSha: sha, syncedHash: hash })
     report.conflicts.push(doc.title)
     report.uploaded++
   }
@@ -256,6 +261,8 @@ export async function runSync(cfg: SyncConfig, store: SyncStore): Promise<SyncRe
   // 3) 원격에만 있는 새 파일
   for (const [path, sha] of remote) {
     if (claimed.has(path)) continue
+    // 동기화하는 사이 이 기기에서 지운 문서는 되살리지 않음 (다음 동기화 때 저장소에서도 지움)
+    if (store.getTombstones().some((t) => t.path === path)) continue
     const content = await gh.getBlob(sha)
     store.addDoc({
       id: newId(),

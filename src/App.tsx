@@ -664,16 +664,58 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     [updateDocs],
   )
 
-  const deleteDoc = useCallback(
-    (id: string) => {
-      const doc = docsRef.current.find((d) => d.id === id)
-      if (doc?.remotePath && doc.remoteSha && isSyncable(doc)) store.setTombstones([...tombstones.current, { path: doc.remotePath, sha: doc.remoteSha }])
-      updateDocs((list) => list.filter((d) => d.id !== id))
-      handles.current.delete(id)
-      paths.current.delete(id)
+  const deleteDocs = useCallback(
+    (ids: string[]) => {
+      const set = new Set(ids)
+      const gone = docsRef.current.filter((d) => set.has(d.id))
+      const tombs = gone.filter((d) => d.remotePath && d.remoteSha && isSyncable(d)).map((d) => ({ path: d.remotePath!, sha: d.remoteSha! }))
+      if (tombs.length) store.setTombstones([...tombstones.current, ...tombs])
+      updateDocs((list) => list.filter((d) => !set.has(d.id)))
+      for (const id of ids) {
+        handles.current.delete(id)
+        paths.current.delete(id)
+      }
       ensureActive()
     },
     [ensureActive, store, updateDocs],
+  )
+  const deleteDoc = useCallback((id: string) => deleteDocs([id]), [deleteDocs])
+
+  /** 여러 문서·폴더를 한 폴더로 옮기기 (폴더는 하위 폴더·문서째) */
+  const moveItems = useCallback(
+    (docIds: string[], folderPaths: string[], target: string) => {
+      const inside = (f: string, root: string) => f === root || f.startsWith(`${root}/`)
+      // 선택한 폴더 안에 든 폴더는 위 폴더와 함께 옮겨지므로 따로 옮기지 않음
+      const tops = folderPaths.filter((f) => !folderPaths.some((o) => o !== f && inside(f, o)))
+      const blocked = tops.filter((f) => inside(target, f))
+      if (blocked.length) setToast(`"${blocked[0]!.split('/').pop()}" 폴더는 자기 안으로 옮길 수 없습니다`)
+      const moving = tops.filter((f) => !inside(target, f) && f.slice(0, Math.max(0, f.lastIndexOf('/'))) !== target)
+      const ids = new Set(docIds)
+      updateDocs((list) =>
+        list.map((d) => (ids.has(d.id) && !tops.some((f) => inside(d.folder ?? '', f)) && (d.folder ?? '') !== target ? { ...d, folder: target, moved: true } : d)),
+      )
+      for (const f of moving) remapFolder(f, target ? `${target}/${f.split('/').pop()}` : f.split('/').pop()!)
+      if (target) setSettings((s) => ({ ...s, collapsedFolders: s.collapsedFolders.filter((f) => f !== target) }))
+    },
+    [remapFolder, updateDocs],
+  )
+
+  /** 여러 문서·폴더 삭제 (폴더는 안의 문서까지) */
+  const deleteItems = useCallback(
+    (docIds: string[], folderPaths: string[]) => {
+      const inside = (f: string) => folderPaths.some((r) => f === r || f.startsWith(`${r}/`))
+      const ids = new Set(docIds)
+      const targets = docsRef.current.filter((d) => ids.has(d.id) || inside(d.folder ?? ''))
+      const synced = syncCfg.enabled && targets.some((d) => d.remotePath && isSyncable(d))
+      const what = [folderPaths.length ? `폴더 ${folderPaths.length}개` : '', `문서 ${targets.length}개`].filter(Boolean).join(', ')
+      if (!confirm(`${what}를 삭제할까요?${folderPaths.length ? '\n(폴더 안의 하위 폴더와 문서도 모두 삭제됩니다)' : ''}${synced ? '\n(동기화된 모든 기기에서 삭제됩니다. GitHub 기록에서는 복구할 수 있습니다)' : ''}`)) return false
+      if (folderPaths.length)
+        setSettings((s) => ({ ...s, folders: s.folders.filter((f) => !inside(f)), collapsedFolders: s.collapsedFolders.filter((f) => !inside(f)) }))
+      deleteDocs(targets.map((d) => d.id))
+      setToast(`${what}를 삭제했습니다`)
+      return true
+    },
+    [deleteDocs, syncCfg.enabled],
   )
 
   // 데스크톱: 파일 더블클릭/열기 대화상자로 연 파일
@@ -1246,6 +1288,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
             onRenameFolder={renameFolder}
             onDeleteFolder={deleteFolder}
             onMoveDoc={moveDoc}
+            onMoveItems={moveItems}
+            onDeleteItems={deleteItems}
             onToggleSync={setDocSync}
             onCollapseSidebar={() => set('sidebarOpen', false)}
             onTemplate={() => setTemplateOpen(true)}

@@ -575,3 +575,20 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 @keyframes imp-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
 .imp-count { margin: 10px 0 2px; font-size: 14px; color: var(--heading); font-weight: 600; }
 .imp-name { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 여러 개 선택 ---------- */
+.sel-check { flex-shrink: 0; margin: 0 2px 0 6px; accent-color: var(--accent); cursor: pointer; }
+.doc-item.selected, .folder-row.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.doc-item.selected:hover, .folder-row.selected:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.files-actions .sel-toggle { flex: 0 0 auto; padding: 6px 9px; }
+.files-actions .sel-toggle.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sel-bar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: -2px 2px 8px; padding: 6px 8px; border-radius: 8px; background: var(--selected); font-size: 12.5px; position: relative; }
+.sel-bar .sel-count { flex: 1; font-weight: 600; min-width: 70px; }
+.sel-bar .sel-btn { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12.5px; cursor: pointer; }
+.sel-bar .sel-btn:disabled { opacity: .45; cursor: default; }
+.sel-bar .sel-btn.danger:not(:disabled) { color: #d33; }
+.sel-bar .sel-move { position: relative; }
+.doc-list.root:focus { outline: none; }
+.drag-ghost { position: fixed; top: -100px; left: -100px; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 13px; }
+.sel-bar .sel-move .popover { left: 0; right: auto; }
+.files-actions .files-btn { white-space: nowrap; }

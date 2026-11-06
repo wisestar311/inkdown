@@ -178,17 +178,24 @@ ipcMain.handle('file:open-dialog', () => openDialog())
 ipcMain.handle('app:quit', () => app.quit())
 
 // Obsidian 폴더 가져오기: 운영체제 폴더 선택 창 → 하위 폴더까지 .md·그림 파일 읽기 (숨은 폴더 제외)
+let importCanceled = false
+ipcMain.handle('import:cancel', () => {
+  importCanceled = true
+})
 ipcMain.handle('import:pick-folder', async () => {
+  importCanceled = false
   if (!win) return null
   const r = await dialog.showOpenDialog(win, { title: '가져올 Obsidian 폴더 선택', properties: ['openDirectory'] })
   const root = r.canceled ? null : r.filePaths[0]
   if (!root) return null
+  win?.webContents.send('import:progress', { count: 0, name: '' })
   const base = path.basename(root)
   const out: { rel: string; data: Uint8Array }[] = []
   let cloudOnly = 0 // iCloud가 클라우드에만 두고 이 Mac에는 자리표시(.이름.md.icloud)만 있는 노트
   const wanted = /\.(md|markdown|png|jpe?g|gif|webp|svg|bmp|avif)$/i
   const walk = async (dir: string, rel: string) => {
     for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+      if (importCanceled) return
       if (/^\..+\.(md|markdown)\.icloud$/i.test(e.name)) {
         cloudOnly++
         continue
@@ -199,11 +206,16 @@ ipcMain.handle('import:pick-folder', async () => {
       if (e.isDirectory()) await walk(full, r2)
       else if (e.isFile() && wanted.test(e.name) && out.length < 5000) {
         const st = await fs.stat(full)
-        if (st.size <= 20 * 1024 * 1024) out.push({ rel: `${base}/${r2}`, data: await fs.readFile(full) })
+        // iCloud에만 있는 파일은 읽는 순간 내려받기가 시작돼 오래 걸릴 수 있으므로 진행 상황을 알림
+        if (st.size <= 20 * 1024 * 1024) {
+          out.push({ rel: `${base}/${r2}`, data: await fs.readFile(full) })
+          win?.webContents.send('import:progress', { count: out.length, name: e.name })
+        }
       }
     }
   }
   await walk(root, '')
+  if (importCanceled) return null
   return { files: out, cloudOnly, root }
 })
 

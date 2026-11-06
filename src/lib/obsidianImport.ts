@@ -124,7 +124,7 @@ async function convert(text: string, title: string, findImage: (name: string) =>
 }
 
 /** 고른 폴더의 파일들 → 가져올 문서 목록 */
-export async function readObsidianFolder(files: PickedFile[], onProgress?: (done: number, total: number) => void): Promise<ImportResult> {
+export async function readObsidianFolder(files: PickedFile[], onProgress?: (done: number, total: number, name: string) => void, isCanceled?: () => boolean): Promise<ImportResult> {
   const visible = files.filter((f) => !HIDDEN.test(f.rel))
   const notes = visible.filter((f) => MD.test(f.file.name))
   const imageFiles = new Map<string, File>()
@@ -135,7 +135,9 @@ export async function readObsidianFolder(files: PickedFile[], onProgress?: (done
   const folders = new Set<string>()
   let done = 0
   for (const f of notes) {
-    onProgress?.(++done, notes.length)
+    if (isCanceled?.()) throw new Error('취소했습니다')
+    onProgress?.(++done, notes.length, f.rel)
+    await new Promise((r) => setTimeout(r)) // 화면이 진행 상황을 그릴 틈을 줌
     const rel = f.rel
     const dir = rel.split('/').slice(0, -1).join('/')
     dir.split('/').forEach((_, i, arr) => arr.slice(0, i + 1).join('/') && folders.add(arr.slice(0, i + 1).join('/')))

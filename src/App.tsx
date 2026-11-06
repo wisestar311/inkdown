@@ -10,7 +10,7 @@ import { TemplateDialog } from './components/TemplateDialog'
 import { LockDialog } from './components/LockDialog'
 import { AboutDialog } from './components/AboutDialog'
 import { HelpDialog } from './components/HelpDialog'
-import { ExportDialog, ObsidianDialog, type ExportFormat } from './components/ExportDialogs'
+import { ExportDialog, ImportProgress, ObsidianDialog, type ExportFormat } from './components/ExportDialogs'
 import { docsToFiles, makeZip, toDocx, toObsidian, toPlainText } from './lib/convert'
 import { exportAllToVault, openInObsidian } from './lib/obsidian'
 import { pickFolderFiles, readObsidianFolder } from './lib/obsidianImport'
@@ -147,6 +147,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [obsidianOpen, setObsidianOpen] = useState(false)
+  const [importProgress, setImportProgress] = useState<{ phase: 'reading' | 'converting'; count: number; total?: number; name: string; startedAt: number } | null>(null)
+  const importCanceled = useRef(false)
   const [lockOn, setLockOn] = useState(isLockEnabled)
   const skipUnloadWarn = useRef(false)
   const [inkMode, setInkMode] = useState(false)
@@ -889,10 +891,20 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   /** Obsidian 보관함(또는 그 안 폴더)을 하위 폴더까지 그대로 가져오기 */
   const obsidianImport = useCallback(async () => {
     let picked: Awaited<ReturnType<typeof pickFolderFiles>>
+    // 끝날 때까지 남아 있는 진행 창 (iCloud에만 있는 노트는 내려받느라 오래 걸릴 수 있음)
+    importCanceled.current = false
+    const offProgress = desktop?.onImportProgress?.((pg) => setImportProgress((cur) => ({ phase: 'reading', count: pg.count, name: pg.name, startedAt: cur?.startedAt ?? Date.now() })))
     try {
       picked = await pickFolderFiles()
     } catch (e) {
+      setImportProgress(null)
       return setToast(`폴더를 읽지 못했습니다: ${(e as Error).message}`)
+    } finally {
+      offProgress?.()
+    }
+    if (importCanceled.current) {
+      setImportProgress(null)
+      return setToast('가져오기를 취소했습니다')
     }
     if (picked.canceled) return
     const files = picked.files
@@ -903,9 +915,14 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       alert(`고른 폴더에서 가져올 마크다운(.md) 노트를 찾지 못했습니다.${cloudNote || '\n\nObsidian 보관함 폴더(또는 노트가 들어 있는 폴더)를 골랐는지 확인해 주세요.'}`)
       return
     }
-    setToast(`폴더를 읽는 중… (파일 ${files.length}개)`)
+    setImportProgress((cur) => ({ phase: 'converting', count: 0, total: 0, name: '', startedAt: cur?.startedAt ?? Date.now() }))
     try {
-      const r = await readObsidianFolder(files, (done, total) => done % 20 === 0 && setToast(`문서 읽는 중… ${done}/${total}`))
+      const r = await readObsidianFolder(
+        files,
+        (done, total, name) => setImportProgress((cur) => ({ phase: 'converting', count: done, total, name, startedAt: cur?.startedAt ?? Date.now() })),
+        () => importCanceled.current,
+      )
+      setImportProgress(null)
       if (!r.notes.length) return setToast('고른 폴더에 마크다운(.md) 문서가 없습니다')
       const bySource = new Map(docsRef.current.filter((d) => d.importedFrom).map((d) => [d.importedFrom!, d]))
       const updates = r.notes.filter((n) => bySource.has(n.source)).length
@@ -933,7 +950,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       setObsidianOpen(false)
       setToast(`Obsidian에서 문서 ${r.notes.length}개를 가져왔습니다${syncCfgRef.current.enabled ? ' — 곧 다른 기기에도 나타납니다' : ''}`)
     } catch (e) {
-      setToast(`가져오기 실패: ${(e as Error).message}`)
+      setImportProgress(null)
+      setToast(importCanceled.current ? '가져오기를 취소했습니다' : `가져오기 실패: ${(e as Error).message}`)
     }
   }, [updateDocs])
 
@@ -1320,6 +1338,15 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
       {promptReq && <PromptDialog req={promptReq} onDone={() => setPromptReq(null)} />}
       {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
+      {importProgress && (
+        <ImportProgress
+          {...importProgress}
+          onCancel={() => {
+            importCanceled.current = true
+            desktop?.cancelImport?.()
+          }}
+        />
+      )}
       {exportOpen && <ExportDialog onPick={exportAs} onClose={() => setExportOpen(false)} />}
       {obsidianOpen && (
         <ObsidianDialog

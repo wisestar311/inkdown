@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal } from './Dialog'
 import { canWriteFolder, chooseVaultFolder } from '../lib/obsidian'
 
@@ -121,5 +121,45 @@ export function ObsidianDialog(p: ObsidianProps) {
         <button className="btn" onClick={p.onClose}>닫기</button>
       </div>
     </Modal>
+  )
+}
+
+/** Obsidian 가져오기 진행 창 — 끝날 때까지 화면에 남아 있음 */
+export function ImportProgress(p: { phase: 'reading' | 'converting'; count: number; total?: number; name: string; startedAt: number; onCancel: () => void }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 500)
+    return () => clearInterval(t)
+  }, [])
+  const sec = Math.floor((Date.now() - p.startedAt) / 1000)
+  const pct = p.phase === 'converting' && p.total ? Math.round((p.count / p.total) * 100) : null
+  return (
+    <div className="modal-backdrop" style={{ zIndex: 300 }}>
+      <div className="modal" style={{ width: 440 }} role="status">
+        <h3>Obsidian에서 가져오는 중</h3>
+        <div className="imp-steps">
+          <span className={p.phase === 'reading' ? 'on' : 'done'}>① 폴더 읽기</span>
+          <span className={p.phase === 'converting' ? 'on' : ''}>② 노트 변환</span>
+        </div>
+        <div className="imp-bar">
+          <div className={pct === null ? 'indeterminate' : ''} style={pct === null ? undefined : { width: `${pct}%` }} />
+        </div>
+        <p className="imp-count">
+          {p.phase === 'reading' ? `읽은 파일 ${p.count}개` : `노트 ${p.count} / ${p.total ?? '?'}개`} · {Math.floor(sec / 60) ? `${Math.floor(sec / 60)}분 ` : ''}
+          {sec % 60}초
+        </p>
+        <p className="hint imp-name" title={p.name}>
+          {p.name || '\u00a0'}
+        </p>
+        {p.phase === 'reading' && sec >= 5 && (
+          <p className="hint">iCloud에만 있던 노트는 읽는 순간 내려받기 때문에 시간이 걸릴 수 있습니다. 숫자나 시간이 계속 올라가면 정상입니다.</p>
+        )}
+        <div className="modal-actions">
+          <button className="btn" onClick={p.onCancel}>
+            취소
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

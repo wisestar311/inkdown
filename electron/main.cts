@@ -177,6 +177,36 @@ async function openDialog() {
 ipcMain.handle('file:open-dialog', () => openDialog())
 ipcMain.handle('app:quit', () => app.quit())
 
+// Obsidian 폴더 가져오기: 운영체제 폴더 선택 창 → 하위 폴더까지 .md·그림 파일 읽기 (숨은 폴더 제외)
+ipcMain.handle('import:pick-folder', async () => {
+  if (!win) return null
+  const r = await dialog.showOpenDialog(win, { title: '가져올 Obsidian 폴더 선택', properties: ['openDirectory'] })
+  const root = r.canceled ? null : r.filePaths[0]
+  if (!root) return null
+  const base = path.basename(root)
+  const out: { rel: string; data: Uint8Array }[] = []
+  let cloudOnly = 0 // iCloud가 클라우드에만 두고 이 Mac에는 자리표시(.이름.md.icloud)만 있는 노트
+  const wanted = /\.(md|markdown|png|jpe?g|gif|webp|svg|bmp|avif)$/i
+  const walk = async (dir: string, rel: string) => {
+    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+      if (/^\..+\.(md|markdown)\.icloud$/i.test(e.name)) {
+        cloudOnly++
+        continue
+      }
+      if (e.name.startsWith('.') || e.name === 'node_modules') continue
+      const full = path.join(dir, e.name)
+      const r2 = rel ? `${rel}/${e.name}` : e.name
+      if (e.isDirectory()) await walk(full, r2)
+      else if (e.isFile() && wanted.test(e.name) && out.length < 5000) {
+        const st = await fs.stat(full)
+        if (st.size <= 20 * 1024 * 1024) out.push({ rel: `${base}/${r2}`, data: await fs.readFile(full) })
+      }
+    }
+  }
+  await walk(root, '')
+  return { files: out, cloudOnly, root }
+})
+
 /** 연결된 파일에 쓰기. interactive(⌘S)일 때 허용 목록에 없는 파일이면 한 번 물어본다. 자동 저장은 묻지 않고 건너뜀 */
 ipcMain.handle('file:write', async (_e, filePath: string, content: string, interactive = false) => {
   const resolved = path.resolve(filePath)

@@ -19,6 +19,7 @@ const api = {
   platform: process.platform,
   openDialog: (): Promise<void> => ipcRenderer.invoke('file:open-dialog'),
   quit: (): Promise<void> => ipcRenderer.invoke('app:quit'),
+  pickImportFolder: (): Promise<{ files: { rel: string; data: Uint8Array }[]; cloudOnly: number; root: string } | null> => ipcRenderer.invoke('import:pick-folder'),
   writeFile: (path: string, content: string, interactive?: boolean): Promise<{ ok: boolean; reason?: string; message?: string }> => ipcRenderer.invoke('file:write', path, content, !!interactive),
   saveAs: (name: string, content: string): Promise<{ path: string; name: string } | null> => ipcRenderer.invoke('file:save-as', name, content),
   exportFile: (name: string, content: string | Uint8Array, ext: string): Promise<boolean> => ipcRenderer.invoke('file:export', name, content, ext),

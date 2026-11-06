@@ -4,6 +4,13 @@ import { compressImage } from './fileio'
 import { hashText } from './storage'
 import type { LayoutItem } from './ink'
 import { joinInk } from './ink'
+import { desktop } from './desktop'
+
+/** 가져올 파일 하나: 고른 폴더 이름부터 시작하는 경로 + 파일 */
+export interface PickedFile {
+  rel: string
+  file: File
+}
 
 export interface ImportedNote {
   /** 고른 폴더 기준 경로 (예: 보관함/공부/산부인과/노트.md) — 다시 가져올 때 같은 문서를 찾는 열쇠 */
@@ -23,10 +30,24 @@ const MD = /\.(md|markdown)$/i
 const IMG = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i
 const HIDDEN = /(^|\/)(\.[^/]+|node_modules)(\/|$)/
 
-const relPath = (f: File) => ((f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name).replace(/\\/g, '/')
 
-/** 폴더 고르기 창을 열어 그 안의 모든 파일을 돌려줌 (취소하면 빈 배열) */
-export function pickFolderFiles(): Promise<File[]> {
+/** 폴더 고르기 창을 열어 그 안의 모든 파일을 돌려줌 (취소하면 빈 배열).
+    데스크톱 앱은 운영체제 폴더 선택 창으로 직접 읽고, 웹은 브라우저의 폴더 선택을 쓴다 */
+export async function pickFolderFiles(): Promise<{ files: PickedFile[]; cloudOnly: number; canceled: boolean }> {
+  if (desktop?.pickImportFolder) {
+    const r = await desktop.pickImportFolder()
+    if (!r) return { files: [], cloudOnly: 0, canceled: true }
+    return { files: r.files.map((x) => ({ rel: x.rel, file: new File([x.data as BlobPart], x.rel.split('/').pop()!) })), cloudOnly: r.cloudOnly, canceled: false }
+  }
+  const files = await pickWebFolder()
+  return {
+    files: files.filter((f) => !/\.icloud$/i.test(f.name)).map((f) => ({ rel: ((f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name).replace(/\\/g, '/'), file: f })),
+    cloudOnly: files.filter((f) => /^\..+\.(md|markdown)\.icloud$/i.test(f.name)).length,
+    canceled: !files.length,
+  }
+}
+
+function pickWebFolder(): Promise<File[]> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -103,21 +124,23 @@ async function convert(text: string, title: string, findImage: (name: string) =>
 }
 
 /** 고른 폴더의 파일들 → 가져올 문서 목록 */
-export async function readObsidianFolder(files: File[]): Promise<ImportResult> {
-  const visible = files.filter((f) => !HIDDEN.test(relPath(f)))
-  const notes = visible.filter((f) => MD.test(f.name))
+export async function readObsidianFolder(files: PickedFile[], onProgress?: (done: number, total: number) => void): Promise<ImportResult> {
+  const visible = files.filter((f) => !HIDDEN.test(f.rel))
+  const notes = visible.filter((f) => MD.test(f.file.name))
   const imageFiles = new Map<string, File>()
-  for (const f of visible) if (IMG.test(f.name)) imageFiles.set(f.name.toLowerCase(), f)
+  for (const f of visible) if (IMG.test(f.file.name)) imageFiles.set(f.file.name.toLowerCase(), f.file)
   const findImage = (name: string) => imageFiles.get(name.toLowerCase())
 
   const result: ImportResult = { notes: [], folders: [], images: 0, skipped: files.length - visible.length }
   const folders = new Set<string>()
+  let done = 0
   for (const f of notes) {
-    const rel = relPath(f)
+    onProgress?.(++done, notes.length)
+    const rel = f.rel
     const dir = rel.split('/').slice(0, -1).join('/')
     dir.split('/').forEach((_, i, arr) => arr.slice(0, i + 1).join('/') && folders.add(arr.slice(0, i + 1).join('/')))
-    const title = f.name.replace(MD, '')
-    const { content, layout, images } = await convert(await f.text(), title, findImage)
+    const title = f.file.name.replace(MD, '')
+    const { content, layout, images } = await convert(await f.file.text(), title, findImage)
     result.images += images
     result.notes.push({ source: rel, folder: dir, content: joinInk(content, layout.length ? { strokes: [], boxes: [], layout } : null) })
   }

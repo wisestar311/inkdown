@@ -888,11 +888,24 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
 
   /** Obsidian 보관함(또는 그 안 폴더)을 하위 폴더까지 그대로 가져오기 */
   const obsidianImport = useCallback(async () => {
-    const files = await pickFolderFiles()
-    if (!files.length) return
-    setToast('Obsidian 문서를 읽는 중…')
+    let picked: Awaited<ReturnType<typeof pickFolderFiles>>
     try {
-      const r = await readObsidianFolder(files)
+      picked = await pickFolderFiles()
+    } catch (e) {
+      return setToast(`폴더를 읽지 못했습니다: ${(e as Error).message}`)
+    }
+    if (picked.canceled) return
+    const files = picked.files
+    const cloudNote = picked.cloudOnly
+      ? `\n\n※ iCloud에서 아직 이 기기로 내려받지 않은 노트 ${picked.cloudOnly}개는 가져오지 못했습니다. Finder에서 그 폴더를 오른쪽 클릭 → "지금 다운로드"를 누른 뒤 다시 가져오세요.`
+      : ''
+    if (!files.some((f) => /\.(md|markdown)$/i.test(f.file.name))) {
+      alert(`고른 폴더에서 가져올 마크다운(.md) 노트를 찾지 못했습니다.${cloudNote || '\n\nObsidian 보관함 폴더(또는 노트가 들어 있는 폴더)를 골랐는지 확인해 주세요.'}`)
+      return
+    }
+    setToast(`폴더를 읽는 중… (파일 ${files.length}개)`)
+    try {
+      const r = await readObsidianFolder(files, (done, total) => done % 20 === 0 && setToast(`문서 읽는 중… ${done}/${total}`))
       if (!r.notes.length) return setToast('고른 폴더에 마크다운(.md) 문서가 없습니다')
       const bySource = new Map(docsRef.current.filter((d) => d.importedFrom).map((d) => [d.importedFrom!, d]))
       const updates = r.notes.filter((n) => bySource.has(n.source)).length
@@ -901,7 +914,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         !confirm(
           `"${top}" 폴더에서 가져옵니다.\n\n` +
             `• 문서 ${r.notes.length}개 (새 문서 ${r.notes.length - updates}개, 전에 가져온 문서 갱신 ${updates}개)\n` +
-            `• 폴더 ${r.folders.length}개 (하위 폴더 포함)\n• 그림 ${r.images}개\n\n가져올까요?`,
+            `• 폴더 ${r.folders.length}개 (하위 폴더 포함)\n• 그림 ${r.images}개${cloudNote}\n\n가져올까요?`,
         )
       )
         return setToast('가져오기를 취소했습니다')

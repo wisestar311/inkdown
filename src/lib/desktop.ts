@@ -10,6 +10,8 @@ export interface DesktopAPI {
   openDialog(): Promise<void>
   /** 앱 완전히 끝내기 */
   quit(): Promise<void>
+  /** 가져올 폴더 고르기: 하위 폴더까지 .md·그림 파일 (경로는 고른 폴더 이름부터) */
+  pickImportFolder(): Promise<{ files: { rel: string; data: Uint8Array }[]; cloudOnly: number; root: string } | null>
   /** 연결된 파일에 쓰기. interactive=true면 처음 쓰는 파일은 저장할지 물어봄 */
   writeFile(path: string, content: string, interactive?: boolean): Promise<{ ok: boolean; reason?: string; message?: string }>
   saveAs(name: string, content: string): Promise<{ path: string; name: string } | null>

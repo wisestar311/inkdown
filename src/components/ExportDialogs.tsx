@@ -45,13 +45,14 @@ interface ObsidianProps {
   onChange: (v: { obsidianVault?: string; obsidianSub?: string; obsidianDir?: string }) => void
   onOpenCurrent: () => void
   onExportAll: () => void
+  onImport: () => void
   onClose: () => void
 }
 
 export function ObsidianDialog(p: ObsidianProps) {
   const [busy, setBusy] = useState(false)
   return (
-    <Modal title="Obsidian으로 보내기" onClose={p.onClose} width={520}>
+    <Modal title="Obsidian으로 보내기 · 가져오기" onClose={p.onClose} width={520}>
       <label className="field-label">보관함(vault) 이름</label>
       <input className="field" placeholder="Obsidian 왼쪽 아래에 보이는 이름 (비우면 마지막으로 연 보관함)" value={p.vault} onChange={(e) => p.onChange({ obsidianVault: e.target.value })} />
       <label className="field-label">보관함 안에 넣을 폴더</label>
@@ -103,6 +104,16 @@ export function ObsidianDialog(p: ObsidianProps) {
           }}
         >
           {canWriteFolder ? '모든 문서 보내기' : 'ZIP으로 내려받기'}
+        </button>
+      </div>
+      <div className="obs-section">
+        <div className="obs-title">③ Obsidian 폴더 → Inkdown으로 가져오기 (하위 폴더 포함)</div>
+        <p className="hint">
+          보관함 폴더나 그 안의 폴더 하나를 고르면, 하위 폴더까지 폴더 구조 그대로 모든 노트를 가져옵니다. 그림(![[그림.png]])은 문서 안에 넣고, [[노트]] 링크는 링크로, ==형광펜==은 형광펜으로 바꿉니다.
+          같은 폴더를 다시 가져오면 전에 가져온 문서를 새 내용으로 갱신합니다.
+        </p>
+        <button className="btn primary" onClick={p.onImport}>
+          가져올 폴더 고르기
         </button>
       </div>
       <p className="hint">형광펜은 Obsidian 형식(==글자==)으로 바뀌고, 글상자는 문서 끝 메모로 붙습니다. 손글씨는 Obsidian에서 보이지 않습니다.</p>

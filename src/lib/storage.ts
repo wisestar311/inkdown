@@ -20,6 +20,8 @@ export interface Doc {
   syncLocal?: boolean
   /** 동기화하지 않고 이 기기에만 두는 문서 */
   localOnly?: boolean
+  /** Obsidian에서 가져온 문서의 원래 경로 (다시 가져올 때 같은 문서를 갱신) */
+  importedFrom?: string
   /** 동기화 저장소 안의 경로 (예: notes/회의록.md) */
   remotePath?: string
   /** 마지막으로 동기화한 원격 파일의 blob SHA */

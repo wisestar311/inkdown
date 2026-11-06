@@ -15,6 +15,11 @@ const boxesInOrder = (ink: InkData | null | undefined): InkBox[] =>
 export function toObsidian(content: string): string {
   const { body, ink } = splitInk(content)
   let md = body.replace(/<mark>([\s\S]*?)<\/mark>/g, (_m, t: string) => (t.includes('\n') ? `<mark>${t}</mark>` : `==${t}==`))
+  // 보관함 안 노트 링크 [별칭](노트.md) → [[노트|별칭]] (Obsidian에서 가져온 링크를 되돌림)
+  md = md.replace(/(?<!!)\[([^\]]+)\]\((?!https?:|data:|mailto:)([^)\s]+?)\.md\)/g, (_m, text: string, target: string) => {
+    const name = decodeURI(target)
+    return text === name || text === name.split('/').pop() ? `[[${name}]]` : `[[${name}|${text}]]`
+  })
   const boxes = boxesInOrder(ink)
   if (boxes.length) {
     md = md.replace(/\s+$/, '')

@@ -13,6 +13,7 @@ import { HelpDialog } from './components/HelpDialog'
 import { ExportDialog, ObsidianDialog, type ExportFormat } from './components/ExportDialogs'
 import { docsToFiles, makeZip, toDocx, toObsidian, toPlainText } from './lib/convert'
 import { exportAllToVault, openInObsidian } from './lib/obsidian'
+import { pickFolderFiles, readObsidianFolder } from './lib/obsidianImport'
 import { getLockConfig, isLockEnabled } from './lib/vault'
 import { TEMPLATE_FOLDER } from './templates'
 import { LayoutLayer } from './components/LayoutLayer'
@@ -885,6 +886,44 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     }
   }, [active, settings.obsidianSub, settings.obsidianVault])
 
+  /** Obsidian 보관함(또는 그 안 폴더)을 하위 폴더까지 그대로 가져오기 */
+  const obsidianImport = useCallback(async () => {
+    const files = await pickFolderFiles()
+    if (!files.length) return
+    setToast('Obsidian 문서를 읽는 중…')
+    try {
+      const r = await readObsidianFolder(files)
+      if (!r.notes.length) return setToast('고른 폴더에 마크다운(.md) 문서가 없습니다')
+      const bySource = new Map(docsRef.current.filter((d) => d.importedFrom).map((d) => [d.importedFrom!, d]))
+      const updates = r.notes.filter((n) => bySource.has(n.source)).length
+      const top = r.notes[0]!.source.split('/')[0]
+      if (
+        !confirm(
+          `"${top}" 폴더에서 가져옵니다.\n\n` +
+            `• 문서 ${r.notes.length}개 (새 문서 ${r.notes.length - updates}개, 전에 가져온 문서 갱신 ${updates}개)\n` +
+            `• 폴더 ${r.folders.length}개 (하위 폴더 포함)\n• 그림 ${r.images}개\n\n가져올까요?`,
+        )
+      )
+        return setToast('가져오기를 취소했습니다')
+      const now = Date.now()
+      updateDocs((list) => {
+        const next = list.map((d) => {
+          const n = d.importedFrom ? r.notes.find((x) => x.source === d.importedFrom) : undefined
+          return n && n.content !== d.content ? { ...d, content: n.content, folder: n.folder, title: deriveTitle(n.content), updatedAt: now, ...(d.folder !== n.folder ? { moved: true } : {}) } : d
+        })
+        const fresh: Doc[] = r.notes
+          .filter((n) => !bySource.has(n.source))
+          .map((n, i) => ({ id: newId(), title: deriveTitle(n.content), content: n.content, folder: n.folder, importedFrom: n.source, updatedAt: now - i }))
+        return [...fresh, ...next]
+      })
+      setSettings((s) => ({ ...s, sidebarOpen: true, sidebarTab: 'files', folders: [...new Set([...s.folders, ...r.folders])], collapsedFolders: s.collapsedFolders.filter((f) => f !== top) }))
+      setObsidianOpen(false)
+      setToast(`Obsidian에서 문서 ${r.notes.length}개를 가져왔습니다${syncCfgRef.current.enabled ? ' — 곧 다른 기기에도 나타납니다' : ''}`)
+    } catch (e) {
+      setToast(`가져오기 실패: ${(e as Error).message}`)
+    }
+  }, [updateDocs])
+
   const obsidianExportAll = useCallback(async () => {
     try {
       const r = await exportAllToVault(docsRef.current.filter((d) => !isTemplateDoc(d)), settings.obsidianSub, settings.obsidianDir || undefined)
@@ -1055,6 +1094,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         { label: syncCfg.enabled && isSyncable(active) ? '저장 (동기화)' : '저장', shortcut: sc('Mod+S'), action: () => doSave() },
         { label: '다른 형식으로 저장…', shortcut: sc('Mod+Shift+S'), action: () => setExportOpen(true) },
         { label: 'Obsidian으로 보내기…', action: () => setObsidianOpen(true) },
+        { label: 'Obsidian에서 가져오기 (폴더째)…', action: obsidianImport },
         { divider: true },
         ...syncItems,
         { divider: true },
@@ -1277,6 +1317,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
           onChange={(v) => setSettings((s) => ({ ...s, ...v }))}
           onOpenCurrent={obsidianOpenCurrent}
           onExportAll={obsidianExportAll}
+          onImport={obsidianImport}
           onClose={() => setObsidianOpen(false)}
         />
       )}

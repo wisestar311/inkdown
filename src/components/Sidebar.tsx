@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { Modal } from './Dialog'
 import { type Doc, hashText } from '../lib/storage'
 import { isSyncable } from '../lib/sync/engine'
 import type { Heading } from '../lib/markdown'
@@ -89,8 +90,15 @@ function buildTree(folders: string[], docs: Doc[]): FolderNode {
 const countDocs = (n: FolderNode): number => n.docs.length + n.children.reduce((s, c) => s + countDocs(c), 0)
 
 /** 작은 팝업 메뉴 */
-function Popover({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+function Popover({ onClose, children, at }: { onClose: () => void; children: ReactNode; at?: { x: number; y: number } }) {
   const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  // 화면 밖으로 나가지 않게 자리 잡기
+  useLayoutEffect(() => {
+    if (!at || !ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    setPos({ left: Math.max(6, Math.min(at.x, window.innerWidth - r.width - 6)), top: Math.max(6, Math.min(at.y, window.innerHeight - r.height - 6)) })
+  }, [at])
   useEffect(() => {
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose()
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -102,7 +110,7 @@ function Popover({ onClose, children }: { onClose: () => void; children: ReactNo
     }
   }, [onClose])
   return (
-    <div className="popover" ref={ref} role="menu">
+    <div className={`popover ${at ? 'at-point' : ''}`} ref={ref} role="menu" style={at ? { left: pos?.left ?? at.x, top: pos?.top ?? at.y, visibility: pos ? 'visible' : 'hidden' } : undefined}>
       {children}
     </div>
   )
@@ -150,6 +158,40 @@ function LocalTreeItem({ node, activePath, onOpen }: { node: TreeNode; activePat
   )
 }
 
+/** 옮길 폴더 고르기 (폴더가 많아도 찾기 쉽게 검색 가능) */
+function FolderPicker({ title, folders, disabled, current, onPick, onClose }: { title: string; folders: string[]; disabled: (f: string) => boolean; current?: string; onPick: (f: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState('')
+  const list = folders.filter((f) => !q || f.toLowerCase().includes(q.toLowerCase()))
+  return (
+    <Modal title={title} onClose={onClose} width={420}>
+      <input className="field" autoFocus placeholder="폴더 이름으로 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="folder-pick">
+        {!q && (
+          <button className={`folder-pick-item ${current === '' ? 'current' : ''}`} disabled={disabled('')} onClick={() => onPick('')}>
+            📄 최상위
+          </button>
+        )}
+        {list.map((f) => (
+          <button
+            key={f}
+            className={`folder-pick-item ${current === f ? 'current' : ''}`}
+            disabled={disabled(f)}
+            style={q ? undefined : { paddingLeft: 10 + (f.split('/').length - 1) * 16 }}
+            onClick={() => onPick(f)}
+            title={f}
+          >
+            📁 {q ? f : f.split('/').pop()}
+          </button>
+        ))}
+        {!list.length && <p className="hint">찾는 폴더가 없습니다.</p>}
+      </div>
+      <div className="modal-actions">
+        <button className="btn" onClick={onClose}>취소</button>
+      </div>
+    </Modal>
+  )
+}
+
 export function Sidebar(p: Props) {
   const tree = useMemo(() => buildTree(p.folders, p.docs), [p.folders, p.docs])
   const allFolders = useMemo(() => {
@@ -158,7 +200,22 @@ export function Sidebar(p: Props) {
     walk(tree)
     return out
   }, [tree])
-  const [menu, setMenu] = useState<{ kind: 'doc' | 'folder' | 'sel'; id: string } | null>(null)
+  const [menu, setMenu] = useState<{ kind: 'doc' | 'folder' | 'sel'; id: string; at?: { x: number; y: number } } | null>(null)
+  /** 폴더 고르기 창: 옮길 문서·폴더 */
+  const [picker, setPicker] = useState<{ docIds: string[]; folders: string[]; current?: string } | null>(null)
+  /** ⋯ 버튼이나 오른쪽 클릭 위치에 메뉴 열기. 여러 개 선택한 항목이면 선택 메뉴 */
+  const openMenu = (e: ReactMouseEvent, kind: 'doc' | 'folder', id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const key: Key = `${kind === 'doc' ? 'd' : 'f'}:${id}`
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const at = e.type === 'contextmenu' ? { x: e.clientX, y: e.clientY } : { x: r.right - 190, y: r.bottom + 2 }
+    if (sel.size > 1 && sel.has(key)) setMenu({ kind: 'sel', id: '', at })
+    else {
+      if (sel.size && !sel.has(key)) setSel(new Set())
+      setMenu({ kind, id, at })
+    }
+  }
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [sel, setSel] = useState<Set<Key>>(() => new Set())
   const [selectMode, setSelectMode] = useState(false)
@@ -224,11 +281,6 @@ export function Sidebar(p: Props) {
     const { docIds, folders } = splitKeys(sel)
     if (p.onDeleteItems(docIds, folders)) clearSel()
   }
-  const moveSelected = (target: string) => {
-    const { docIds, folders } = splitKeys(sel)
-    p.onMoveItems(docIds, folders, target)
-    clearSel()
-  }
 
   const dropProps = (folder: string) => ({
     onDragOver: (e: DragEvent) => {
@@ -291,7 +343,12 @@ export function Sidebar(p: Props) {
   const renderDoc = (d: Doc, depth: number) => {
     const b = syncBadge(d, p.syncEnabled)
     return (
-      <li key={d.id} className={`doc-item ${d.id === p.activeId ? 'active' : ''} ${sel.has(`d:${d.id}`) ? 'selected' : ''}`} style={{ paddingLeft: depth * 14 }}>
+      <li
+        key={d.id}
+        className={`doc-item ${d.id === p.activeId ? 'active' : ''} ${sel.has(`d:${d.id}`) ? 'selected' : ''}`}
+        style={{ paddingLeft: depth * 14 }}
+        onContextMenu={(e) => openMenu(e, 'doc', d.id)}
+      >
         {checkbox(`d:${d.id}`)}
         <button
           className="doc-row"
@@ -313,18 +370,12 @@ export function Sidebar(p: Props) {
             {new Date(d.updatedAt).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
         </button>
-        <button className="icon-btn more" title="이동·삭제" onClick={() => setMenu({ kind: 'doc', id: d.id })}>⋯</button>
+        <button className="icon-btn more" title="메뉴 (오른쪽 클릭도 됩니다)" onClick={(e) => openMenu(e, 'doc', d.id)}>⋯</button>
         {menu?.kind === 'doc' && menu.id === d.id && (
-          <Popover onClose={() => setMenu(null)}>
-            <div className="popover-label">폴더로 이동</div>
-            <button className={`popover-item ${!d.folder ? 'current' : ''}`} onClick={() => (p.onMoveDoc(d.id, ''), setMenu(null))}>
-              📄 최상위
-            </button>
-            {allFolders.map((f) => (
-              <button key={f} className={`popover-item ${d.folder === f ? 'current' : ''}`} style={{ paddingLeft: 10 + f.split('/').length * 10 }} onClick={() => (p.onMoveDoc(d.id, f), setMenu(null))}>
-                📁 {f.split('/').pop()}
-              </button>
-            ))}
+          <Popover onClose={() => setMenu(null)} {...(menu.at ? { at: menu.at } : {})}>
+            <div className="popover-label" title={d.title}>{d.title || '제목 없음'}</div>
+            <button className="popover-item" onClick={() => (setMenu(null), p.onSelect(d.id))}>📄 열기</button>
+            <button className="popover-item" onClick={() => (setMenu(null), setPicker({ docIds: [d.id], folders: [], current: d.folder ?? '' }))}>📁 다른 폴더로 이동…</button>
             {p.syncEnabled && (
               <>
                 <div className="popover-sep" />
@@ -356,7 +407,12 @@ export function Sidebar(p: Props) {
     const open = !p.collapsed.includes(n.path)
     return (
       <li key={`f:${n.path}`} className="folder-item">
-        <div className={`folder-row ${dropTarget === n.path ? 'drop' : ''} ${sel.has(`f:${n.path}`) ? 'selected' : ''}`} style={{ paddingLeft: depth * 14 }} {...dropProps(n.path)}>
+        <div
+          className={`folder-row ${dropTarget === n.path ? 'drop' : ''} ${sel.has(`f:${n.path}`) ? 'selected' : ''}`}
+          style={{ paddingLeft: depth * 14 }}
+          {...dropProps(n.path)}
+          onContextMenu={(e) => openMenu(e, 'folder', n.path)}
+        >
           {checkbox(`f:${n.path}`)}
           <button
             className="folder-toggle"
@@ -374,28 +430,17 @@ export function Sidebar(p: Props) {
             <span className="folder-count">{countDocs(n)}</span>
           </button>
           <button className="icon-btn" title="이 폴더에 새 문서" onClick={() => p.onNew(n.path)}>＋</button>
-          <button className="icon-btn more" title="폴더 메뉴" onClick={() => setMenu({ kind: 'folder', id: n.path })}>⋯</button>
+          <button className="icon-btn more" title="폴더 메뉴 (오른쪽 클릭도 됩니다)" onClick={(e) => openMenu(e, 'folder', n.path)}>⋯</button>
           {menu?.kind === 'folder' && menu.id === n.path && (
-            <Popover onClose={() => setMenu(null)}>
-              <button className="popover-item" onClick={() => (setMenu(null), p.onNew(n.path))}>📄 새 문서</button>
+            <Popover onClose={() => setMenu(null)} {...(menu.at ? { at: menu.at } : {})}>
+              <div className="popover-label" title={n.path}>📁 {n.name}</div>
+              <button className="popover-item" onClick={() => (setMenu(null), p.onNew(n.path))}>📄 이 폴더에 새 문서</button>
               <button className="popover-item" onClick={() => (setMenu(null), p.onNewFolder(n.path))}>📁 하위 폴더 만들기</button>
               <button className="popover-item" onClick={() => (setMenu(null), p.onRenameFolder(n.path))}>✏️ 이름 바꾸기</button>
-              <div className="popover-label">폴더째 옮기기</div>
-              {n.path.includes('/') && (
-                <button className="popover-item" onClick={() => (setMenu(null), p.onMoveItems([], [n.path], ''))}>
-                  📄 최상위
-                </button>
-              )}
-              {allFolders
-                .filter((f) => f !== n.path && !f.startsWith(`${n.path}/`) && f !== n.path.slice(0, Math.max(0, n.path.lastIndexOf('/'))))
-                .map((f) => (
-                  <button key={f} className="popover-item" style={{ paddingLeft: 10 + f.split('/').length * 10 }} onClick={() => (setMenu(null), p.onMoveItems([], [n.path], f))}>
-                    📁 {f.split('/').pop()}
-                  </button>
-                ))}
+              <button className="popover-item" onClick={() => (setMenu(null), setPicker({ docIds: [], folders: [n.path], current: n.path.slice(0, Math.max(0, n.path.lastIndexOf('/'))) }))}>↪ 다른 폴더로 옮기기…</button>
               <div className="popover-sep" />
-              <button className="popover-item danger" onClick={() => (setMenu(null), p.onDeleteFolder(n.path))}>🗑 폴더만 삭제 (문서는 위 폴더로)</button>
-              <button className="popover-item danger" onClick={() => (setMenu(null), p.onDeleteItems([], [n.path]))}>🗑 폴더와 안의 문서 모두 삭제</button>
+              <button className="popover-item danger" onClick={() => (setMenu(null), p.onDeleteItems([], [n.path]))}>🗑 폴더 삭제 (안의 문서까지 {countDocs(n)}개)</button>
+              <button className="popover-item subtle" onClick={() => (setMenu(null), p.onDeleteFolder(n.path))}>폴더만 없애기 (안의 문서·폴더는 위로 올림)</button>
             </Popover>
           )}
         </div>
@@ -409,8 +454,36 @@ export function Sidebar(p: Props) {
     )
   }
 
+  const pickerDisabled = (f: string) => !!picker?.folders.some((x) => f === x || f.startsWith(`${x}/`))
+  const selMenu = menu?.kind === 'sel' && (
+    <Popover onClose={() => setMenu(null)} {...(menu.at ? { at: menu.at } : {})}>
+      <div className="popover-label">{sel.size}개 선택</div>
+      <button className="popover-item" onClick={() => (setMenu(null), setPicker(splitKeys(sel)))}>📁 다른 폴더로 이동…</button>
+      <div className="popover-sep" />
+      <button className="popover-item danger" onClick={() => (setMenu(null), deleteSelected())}>🗑 {sel.size}개 삭제</button>
+      <button className="popover-item" onClick={() => (setMenu(null), clearSel())}>선택 해제</button>
+    </Popover>
+  )
+
   return (
     <aside className="sidebar">
+      {selMenu}
+      {picker && (
+        <FolderPicker
+          title={`${picker.docIds.length + picker.folders.length > 1 ? `${picker.docIds.length + picker.folders.length}개를` : picker.folders.length ? '폴더를' : '문서를'} 옮길 폴더`}
+          folders={allFolders}
+          disabled={pickerDisabled}
+          {...(picker.current !== undefined ? { current: picker.current } : {})}
+          onClose={() => setPicker(null)}
+          onPick={(f) => {
+            const { docIds, folders } = picker
+            setPicker(null)
+            if (docIds.length === 1 && !folders.length) p.onMoveDoc(docIds[0]!, f)
+            else p.onMoveItems(docIds, folders, f)
+            if (docIds.length + folders.length > 1) clearSel()
+          }}
+        />
+      )}
       <div className="sidebar-head">
         <div className="sidebar-tabs">
           <button className={p.tab === 'files' ? 'active' : ''} onClick={() => p.onTab('files')}>문서</button>
@@ -445,24 +518,9 @@ export function Sidebar(p: Props) {
                 전체
               </button>
               <span className="sel-move">
-                <button className="sel-btn" disabled={!sel.size} onClick={() => setMenu({ kind: 'sel', id: '' })}>
+                <button className="sel-btn" disabled={!sel.size} onClick={() => setPicker(splitKeys(sel))}>
                   📁 이동
                 </button>
-                {menu?.kind === 'sel' && (
-                  <Popover onClose={() => setMenu(null)}>
-                    <div className="popover-label">{sel.size}개를 옮길 폴더</div>
-                    <button className="popover-item" onClick={() => (setMenu(null), moveSelected(''))}>
-                      📄 최상위
-                    </button>
-                    {allFolders
-                      .filter((f) => !splitKeys(sel).folders.some((s2) => f === s2 || f.startsWith(`${s2}/`)))
-                      .map((f) => (
-                        <button key={f} className="popover-item" style={{ paddingLeft: 10 + f.split('/').length * 10 }} onClick={() => (setMenu(null), moveSelected(f))}>
-                          📁 {f.split('/').pop()}
-                        </button>
-                      ))}
-                  </Popover>
-                )}
               </span>
               <button className="sel-btn danger" disabled={!sel.size} onClick={deleteSelected}>
                 🗑 삭제
@@ -493,7 +551,7 @@ export function Sidebar(p: Props) {
           </ul>
           {tree.children.length > 0 && (
             <p className="hint-small">
-              문서·폴더를 끌어서 폴더에 넣거나 ⋯ 로 옮깁니다. 여러 개는 {isMac ? '⌘' : 'Ctrl'}+클릭·Shift+클릭 또는 ☑ 로 고릅니다.
+              문서·폴더를 끌어서 폴더에 넣거나 ⋯ 로 옮깁니다. 오른쪽 클릭하면 메뉴가 나오고, 여러 개는 {isMac ? "⌘" : "Ctrl"}+클릭·Shift+클릭 또는 ☑ 로 고릅니다.
             </p>
           )}
 

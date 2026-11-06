@@ -337,6 +337,35 @@ describe('동기화', () => {
     expect(gh.commits).toBe(c)
   })
 
+  it('문서가 든 폴더를 지우면 (문서째 / 폴더만) 양쪽 기기에서 다시 나타나지 않는다', async () => {
+    // 앱처럼: 폴더 목록 = 만든 폴더 + 문서가 든 폴더
+    for (const d of [A, B]) d.getFolders = () => [...new Set([...d.folders, ...d.docs.flatMap((x) => (x.folder ?? '').split('/').filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join('/')))])]
+    const a1 = A.write('노트1')
+    a1.folder = '보관함/공부'
+    const a2 = A.write('노트2')
+    a2.folder = '보관함/공부'
+    const a3 = A.write('노트3')
+    a3.folder = '임시'
+    A.folders = ['보관함', '보관함/공부', '보관함/빈폴더', '임시']
+    await A.sync()
+    await B.sync()
+    expect(B.getFolders().sort()).toEqual(['보관함', '보관함/공부', '보관함/빈폴더', '임시'])
+    // A: '보관함'을 문서째 삭제, '임시'는 폴더만 삭제(문서는 최상위로)
+    A.delete(a1)
+    A.delete(a2)
+    a3.folder = ''
+    a3.moved = true
+    A.folders = []
+    for (let i = 0; i < 3; i++) {
+      await A.sync()
+      await B.sync()
+    }
+    expect(A.getFolders()).toEqual([])
+    expect(B.getFolders()).toEqual([])
+    expect(B.docs.map((d) => `${d.folder || '/'}:${d.title}`)).toEqual(['/:노트3'])
+    expect([...gh.files.keys()].filter((k) => !k.endsWith('.json'))).toEqual(['notes/노트3.md'])
+  })
+
   it('처음 연결한 기기의 폴더는 기존 폴더와 합쳐진다', () => {
     expect(mergeFolders(['a'], ['b'], undefined)).toEqual(['a', 'b'])
     expect(mergeFolders(['a', 'b'], ['b'], ['a', 'b'])).toEqual(['b'])

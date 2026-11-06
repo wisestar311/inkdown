@@ -592,3 +592,11 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .drag-ghost { position: fixed; top: -100px; left: -100px; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 13px; }
 .sel-bar .sel-move .popover { left: 0; right: auto; }
 .files-actions .files-btn { white-space: nowrap; }
+.popover.at-point { position: fixed; right: auto; z-index: 400; }
+.popover .popover-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.popover-item.subtle { font-size: 12px; opacity: .75; }
+.folder-pick { max-height: 50vh; overflow-y: auto; margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+.folder-pick-item { display: block; width: 100%; text-align: left; padding: 6px 10px; border-radius: 6px; background: none; border: 0; color: var(--text); cursor: pointer; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-pick-item:hover:not(:disabled) { background: var(--hover); }
+.folder-pick-item.current { font-weight: 600; color: var(--accent); }
+.folder-pick-item:disabled { opacity: .4; cursor: default; }

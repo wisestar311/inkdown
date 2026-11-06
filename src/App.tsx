@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar'
 import { Modal, PromptDialog, type PromptRequest } from './components/Dialog'
 import { SyncDialog } from './components/SyncDialog'
 import { FontDialog } from './components/FontDialog'
+import { CaretOverlay } from './components/CaretOverlay'
 import { TemplateDialog } from './components/TemplateDialog'
 import { LockDialog } from './components/LockDialog'
 import { AboutDialog } from './components/AboutDialog'
@@ -228,8 +229,11 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
     root.style.setProperty('--font-heading', settings.headingFont === 'same' ? 'var(--font-body)' : resolveFont(settings.headingFont, BODY_FONTS, FONT_FALLBACK.body))
     root.style.setProperty('--font-mono', resolveFont(settings.codeFont, CODE_FONTS, FONT_FALLBACK.code))
     root.style.setProperty('--line-height', String(settings.lineHeight))
+    root.style.setProperty('--caret-w', `${settings.caretWidth ?? 3}px`)
+    if (validColor(settings.caretColor)) root.style.setProperty('--caret-color', settings.caretColor!)
+    else root.style.removeProperty('--caret-color')
     settings.headingColors.forEach((c, i) => (validColor(c) ? root.style.setProperty(`--h${i + 1}-color`, c) : root.style.removeProperty(`--h${i + 1}-color`)))
-  }, [printing, settings.theme, settings.fontSize, settings.contentWidth, settings.bodyFont, settings.headingFont, settings.codeFont, settings.lineHeight, settings.headingColors])
+  }, [printing, settings.theme, settings.fontSize, settings.contentWidth, settings.bodyFont, settings.headingFont, settings.codeFont, settings.lineHeight, settings.headingColors, settings.caretWidth, settings.caretColor])
 
   useEffect(() => {
     document.title = `${active.dirty ? '• ' : ''}${active.title} — Inkdown`
@@ -1332,6 +1336,7 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
             ) : (
               <SourceEditor key={editorKey} ref={sourceRef} initialValue={activeBody} onChange={handleChange} dark={theme.dark} />
             )}
+            {mode === 'wysiwyg' && !inkMode && !printing && (settings.caretWidth ?? 3) > 1 && <CaretOverlay width={settings.caretWidth ?? 3} />}
             {mode === 'wysiwyg' && (
               <LayoutLayer
                 key={`layout-${active.id}-${nonce}`}
@@ -1427,6 +1432,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
           value={{ bodyFont: settings.bodyFont, headingFont: settings.headingFont, codeFont: settings.codeFont, fontSize: settings.fontSize, lineHeight: settings.lineHeight, headingColors: settings.headingColors }}
           onChange={(v) => setSettings((s) => ({ ...s, ...v, appearanceAt: Date.now() }))}
           syncAppearance={settings.syncAppearance !== false}
+          caret={{ width: settings.caretWidth ?? 3, color: settings.caretColor ?? '' }}
+          onCaret={(c) => setSettings((s) => ({ ...s, caretWidth: c.width, caretColor: c.color }))}
           onSyncAppearance={(on) => setSettings((s) => ({ ...s, syncAppearance: on, ...(on ? { appearanceAt: Date.now() } : {}) }))}
           onClose={() => setFontOpen(false)}
         />

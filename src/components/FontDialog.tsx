@@ -12,7 +12,17 @@ interface Props {
   onClose: () => void
   syncAppearance: boolean
   onSyncAppearance: (on: boolean) => void
+  caret: { width: number; color: string }
+  onCaret: (c: { width: number; color: string }) => void
 }
+
+const CARET_WIDTHS = [
+  { w: 1, label: '기본' },
+  { w: 2, label: '조금 굵게' },
+  { w: 3, label: '굵게' },
+  { w: 4, label: '아주 굵게' },
+]
+const CARET_COLORS = ['#e5484d', '#f76b15', '#2f6fdf', '#12a150', '#8e4ec6', '#111111']
 
 function FontSelect({ label, value, options, allowSame, onChange }: { label: string; value: string; options: typeof BODY_FONTS; allowSame?: boolean; onChange: (v: string) => void }) {
   const isCustom = value.startsWith(CUSTOM_PREFIX)
@@ -47,7 +57,7 @@ function FontSelect({ label, value, options, allowSame, onChange }: { label: str
   )
 }
 
-export function FontDialog({ value, onChange, onClose, syncAppearance, onSyncAppearance }: Props) {
+export function FontDialog({ value, onChange, onClose, syncAppearance, onSyncAppearance, caret, onCaret }: Props) {
   const set = <K extends keyof FontSettings>(k: K, v: FontSettings[K]) => onChange({ ...value, [k]: v })
   const body = resolveFont(value.bodyFont, BODY_FONTS, FONT_FALLBACK.body)
   const heading = value.headingFont === 'same' ? body : resolveFont(value.headingFont, BODY_FONTS, FONT_FALLBACK.body)
@@ -90,6 +100,23 @@ export function FontDialog({ value, onChange, onClose, syncAppearance, onSyncApp
           </div>
         )
       })}
+
+      <label className="field-label">커서 (이 기기만)</label>
+      <div className="hc-row caret-row">
+        {CARET_WIDTHS.map((c) => (
+          <button key={c.w} className={`btn small ${caret.width === c.w ? 'primary' : ''}`} onClick={() => onCaret({ ...caret, width: c.w })}>
+            <span className="caret-sample" style={{ width: c.w, background: validColor(caret.color) || 'var(--accent)' }} /> {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="hc-row">
+        <span className="hc-label">커서 색</span>
+        <button className={`hc-swatch ${!validColor(caret.color) ? 'on' : ''}`} style={{ background: 'var(--accent)' }} title="강조색 (테마)" onClick={() => onCaret({ ...caret, color: '' })} />
+        {CARET_COLORS.map((c) => (
+          <button key={c} className={`hc-swatch ${caret.color.toLowerCase() === c ? 'on' : ''}`} style={{ background: c }} title={c} onClick={() => onCaret({ ...caret, color: c })} />
+        ))}
+        <input className="hc-custom" type="color" title="직접 고르기" value={validColor(caret.color) || '#2f6fdf'} onChange={(e) => onCaret({ ...caret, color: e.target.value })} />
+      </div>
 
       <div className="font-preview" style={{ fontFamily: body, fontSize: value.fontSize, lineHeight: value.lineHeight }}>
         <div className="hc-preview" style={{ fontFamily: heading, fontWeight: 700, marginBottom: 6 }}>

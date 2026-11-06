@@ -20,7 +20,8 @@ interface Props {
 
 const baseTheme = EditorView.theme({
   '&': { fontSize: 'var(--editor-font-size)', background: 'transparent', height: '100%' },
-  '.cm-content': { fontFamily: 'var(--font-mono)', padding: '0 0 40vh', caretColor: 'var(--accent)' },
+  '.cm-content': { fontFamily: 'var(--font-mono)', padding: '0 0 40vh', caretColor: 'var(--caret-color, var(--accent))' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftWidth: 'var(--caret-w, 2px)', borderLeftColor: 'var(--caret-color, var(--accent))' },
   '.cm-gutters': { background: 'transparent', border: 'none', color: 'var(--muted)' },
   '.cm-activeLine, .cm-activeLineGutter': { background: 'var(--hover)' },
   '&.cm-focused': { outline: 'none' },

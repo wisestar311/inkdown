@@ -64,6 +64,10 @@ export interface Settings {
   collapsedFolders: string[]
   /** 마지막 동기화 때 맞춘 폴더 목록 (폴더 삭제를 다른 기기에 전하기 위해) */
   syncedFolders?: string[]
+  /** 커서 굵기(px, 1 = 기본 얇은 커서) — 기기별 */
+  caretWidth?: number
+  /** 커서 색 ('' = 강조색) — 기기별 */
+  caretColor?: string
   /** PDF에 손글씨(펜·형광펜·직선) 포함 — 글상자는 항상 포함 */
   pdfStrokes: boolean
   /** Obsidian 보관함(vault) 이름 — 비우면 Obsidian에서 마지막으로 연 보관함 */

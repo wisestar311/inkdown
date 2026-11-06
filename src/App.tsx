@@ -74,7 +74,8 @@ const supportsFolder = webSupportsFolder && !isDesktop
 
 const EMPTY_INK = emptyInk()
 /** 모든 기기에 맞추는 보기 설정 항목 */
-const APPEARANCE_KEYS = ['bodyFont', 'headingFont', 'codeFont', 'fontSize', 'lineHeight', 'headingColors'] as const
+/** 모든 기기에 맞추는 보기 설정 (글자 크기는 화면마다 달라 기기별로 둠) */
+const APPEARANCE_KEYS = ['bodyFont', 'headingFont', 'codeFont', 'lineHeight', 'headingColors'] as const
 /** 다른 기기 변경 확인 주기 (바뀐 게 없으면 GitHub이 304만 돌려줘 부담이 거의 없음) */
 const SYNC_INTERVAL = 15_000
 /** 입력을 멈추고 올리기까지 */
@@ -116,6 +117,20 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const settingsRef = useRef(settings)
   settingsRef.current = settings
+  const applyingRemote = useRef<string | null>(null)
+
+  // 글꼴·줄 간격·제목 색을 어떤 방법으로 바꾸든(글꼴 창, 단축키 등) 바꾼 시각을 기록 → 동기화 때 되돌려지지 않음
+  const appearanceSig = JSON.stringify(APPEARANCE_KEYS.map((k) => settings[k]))
+  const lastAppearanceSig = useRef(appearanceSig)
+  useEffect(() => {
+    if (appearanceSig === lastAppearanceSig.current) return
+    lastAppearanceSig.current = appearanceSig
+    if (applyingRemote.current === appearanceSig) {
+      applyingRemote.current = null
+      return
+    }
+    setSettings((s) => ({ ...s, appearanceAt: Date.now() }))
+  }, [appearanceSig])
   const [mode, setMode] = useState<Mode>('wysiwyg')
   const [nonce, setNonce] = useState(0)
   const [folder, setFolder] = useState<{ name: string; tree: TreeNode[] } | null>(null)
@@ -294,6 +309,8 @@ export default function App({ initialDocs, initialTombstones }: AppProps) {
         if (settingsRef.current.syncAppearance === false) return
         const patch: Partial<Settings> = { appearanceAt: a.updatedAt }
         for (const k of APPEARANCE_KEYS) if (k in a.values) (patch as Record<string, unknown>)[k] = a.values[k]
+        // 다른 기기 설정을 적용하는 중이라는 표시: 이 변경은 '이 기기에서 바꾼 것'으로 기록하지 않음
+        applyingRemote.current = JSON.stringify(APPEARANCE_KEYS.map((k) => (k in a.values ? a.values[k] : settingsRef.current[k])))
         settingsRef.current = { ...settingsRef.current, ...patch }
         setSettings((s) => ({ ...s, ...patch }))
       },

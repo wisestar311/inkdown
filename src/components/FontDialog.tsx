@@ -108,7 +108,7 @@ export function FontDialog({ value, onChange, onClose, syncAppearance, onSyncApp
 
       <label className="check-row" style={{ marginTop: 10 }}>
         <input type="checkbox" checked={syncAppearance} onChange={(e) => onSyncAppearance(e.target.checked)} />
-        이 설정을 동기화된 모든 기기에 똑같이 적용 (끄면 이 기기에서만)
+        글꼴·줄 간격·제목 색을 동기화된 모든 기기에 똑같이 적용 (글자 크기는 기기별, 끄면 모두 이 기기에서만)
       </label>
       <div className="modal-actions">
         <button
